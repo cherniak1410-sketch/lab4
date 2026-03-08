@@ -1,18 +1,27 @@
 package ru.yourteam.lab;
 
+import ru.yourteam.lab.domain.Measurement;
+import ru.yourteam.lab.domain.MeasurementParam;
 import ru.yourteam.lab.domain.Sample;
 import ru.yourteam.lab.domain.SampleStatus;
+import ru.yourteam.lab.repository.MeasurementRepository;
 import ru.yourteam.lab.repository.SampleRepository;
+
 
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Scanner;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class LabApp {
     private final Scanner scanner = new Scanner(System.in);
     private final SampleRepository sampleRepository = new SampleRepository();
+    private final MeasurementRepository measurementRepository = new MeasurementRepository();
+
 
     public static void main(String[] args) {
         LabApp app = new LabApp();
@@ -64,6 +73,15 @@ public class LabApp {
                 break;
             case "sample_archive":
                 sampleArchive(args);
+                break;
+            case "meas_add":
+                measAdd(args);
+                break;
+            case "meas_list":
+                measList(args);
+                break;
+            case "meas_stats":
+                measStats(args);
                 break;
             default:
                 System.out.println("Неизвестная команда: " + command);
@@ -189,6 +207,15 @@ public class LabApp {
         Sample sample = sampleRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("образец с id=" + id + " не найден"));
 
+        // Получаем измерения для этого образца
+        List<Measurement> measurements = measurementRepository.findBySampleId(id);
+
+        // Собираем уникальные параметры
+        Set<MeasurementParam> params = new HashSet<>();
+        for (Measurement m : measurements) {
+            params.add(m.param);
+        }
+
         System.out.println("Sample #" + sample.id);
         System.out.println("name: " + sample.name);
         System.out.println("type: " + sample.type);
@@ -197,43 +224,16 @@ public class LabApp {
         System.out.println("owner: " + sample.ownerUsername);
         System.out.println("created: " + sample.createdAt);
         System.out.println("updated: " + sample.updatedAt);
+        System.out.println("measurements: " + measurements.size());
+
+        if (params.isEmpty()) {
+            System.out.println("params: ");
+        } else {
+            System.out.println("params: " + params.stream()
+                    .map(Enum::name)
+                    .collect(Collectors.joining(", ")));
+        }
     }
-    private void sampleUpdate(String[] args) {
-        if (args.length < 2) {
-            throw new IllegalArgumentException("использование: sample_update <id> field=value ...");
-        }
-
-        long id;
-        try {
-            id = Long.parseLong(args[0]);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("id должен быть числом");
-        }
-
-        Sample sample = sampleRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("образец с id=" + id + " не найден"));
-
-        for (int i = 1; i < args.length; i++) {
-            String[] parts = args[i].split("=", 2);
-            if (parts.length != 2) {
-                throw new IllegalArgumentException("неверный формат: " + args[i] + ". Используйте поле=значение");
-            }
-
-            String field = parts[0];
-            String value = parts[1];
-
-            if (value.startsWith("\"") && value.endsWith("\"")) {
-                value = value.substring(1, value.length() - 1);
-            }
-
-            applyFieldUpdate(sample, field, value);
-        }
-
-        sample.updatedAt = Instant.now();
-        sampleRepository.save(sample);
-        System.out.println("OK");
-    }
-
     private void applyFieldUpdate(Sample sample, String field, String value) {
         switch (field) {
             case "name":
@@ -279,7 +279,41 @@ public class LabApp {
                 throw new IllegalArgumentException("нельзя менять поле '" + field + "'");
         }
     }
+    private void sampleUpdate(String[] args) {
+        if (args.length < 2) {
+            throw new IllegalArgumentException("использование: sample_update <id> field=value ...");
+        }
 
+        long id;
+        try {
+            id = Long.parseLong(args[0]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("id должен быть числом");
+        }
+
+        Sample sample = sampleRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("образец с id=" + id + " не найден"));
+
+        for (int i = 1; i < args.length; i++) {
+            String[] parts = args[i].split("=", 2);
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("неверный формат: " + args[i] + ". Используйте поле=значение");
+            }
+
+            String field = parts[0];
+            String value = parts[1];
+
+            if (value.startsWith("\"") && value.endsWith("\"")) {
+                value = value.substring(1, value.length() - 1);
+            }
+
+            applyFieldUpdate(sample, field, value);
+        }
+
+        sample.updatedAt = Instant.now();
+        sampleRepository.save(sample);
+        System.out.println("OK");
+    }
     private void sampleArchive(String[] args) {
         if (args.length != 1) {
             throw new IllegalArgumentException("использование: sample_archive <id>");
@@ -310,4 +344,208 @@ public class LabApp {
         if (s.length() <= maxLength) return s;
         return s.substring(0, maxLength - 3) + "...";
     }
+    private void measAdd(String[] args) {
+        if (args.length != 1) {
+            throw new IllegalArgumentException("использование: meas_add <sample_id>");
+        }
+
+        long sampleId;
+        try {
+            sampleId = Long.parseLong(args[0]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("id образца должен быть числом");
+        }
+
+        Sample sample = sampleRepository.findById(sampleId)
+                .orElseThrow(() -> new IllegalArgumentException("образец с id=" + sampleId + " не найден"));
+
+        if (sample.status == SampleStatus.ARCHIVED) {
+            throw new IllegalArgumentException("нельзя добавлять измерения к ARCHIVED образцу");
+        }
+
+        System.out.println("Добавление измерения к образцу #" + sampleId);
+
+        System.out.print("Параметр (PH/CONDUCTIVITY/TURBIDITY/NITRATE): ");
+        String paramStr = scanner.nextLine().trim().toUpperCase();
+        MeasurementParam param;
+        try {
+            param = MeasurementParam.valueOf(paramStr);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("неизвестный параметр, допустимые: PH, CONDUCTIVITY, TURBIDITY, NITRATE");
+        }
+
+        System.out.print("Значение: ");
+        String valueStr = scanner.nextLine().trim();
+        double value;
+        try {
+            value = Double.parseDouble(valueStr);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("значение должно быть числом");
+        }
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            throw new IllegalArgumentException("значение должно быть конечным числом");
+        }
+
+        System.out.print("Единицы: ");
+        String unit = scanner.nextLine().trim();
+        if (unit.isEmpty()) {
+            throw new IllegalArgumentException("единицы не могут быть пустыми");
+        }
+
+        System.out.print("Метод: ");
+        String method = scanner.nextLine().trim();
+        if (method.isEmpty()) {
+            throw new IllegalArgumentException("метод не может быть пустым");
+        }
+
+        Measurement measurement = new Measurement();
+        measurement.sampleId = sampleId;
+        measurement.param = param;
+        measurement.value = value;
+        measurement.unit = unit;
+        measurement.method = method;
+        measurement.measuredAt = Instant.now();
+        measurement.ownerUsername = "SYSTEM";
+        measurement.createdAt = Instant.now();
+        measurement.updatedAt = measurement.createdAt;
+
+        measurementRepository.save(measurement);
+        System.out.println("OK measurement_id=" + measurement.id);
+    }
+    private void measList(String[] args) {
+        if (args.length < 1) {
+            throw new IllegalArgumentException("использование: meas_list <sample_id> [--param PARAM] [--last N]");
+        }
+
+        long sampleId;
+        try {
+            sampleId = Long.parseLong(args[0]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("id образца должен быть числом");
+        }
+
+        if (sampleRepository.findById(sampleId).isEmpty()) {
+            throw new IllegalArgumentException("образец с id=" + sampleId + " не найден");
+        }
+
+        MeasurementParam paramFilter = null;
+        Integer last = null;
+
+        for (int i = 1; i < args.length; i++) {
+            switch (args[i]) {
+                case "--param":
+                    if (i + 1 >= args.length) {
+                        throw new IllegalArgumentException("не указан параметр");
+                    }
+                    String paramStr = args[++i].toUpperCase();
+                    try {
+                        paramFilter = MeasurementParam.valueOf(paramStr);
+                    } catch (IllegalArgumentException e) {
+                        throw new IllegalArgumentException("неизвестный параметр, используйте PH, CONDUCTIVITY, TURBIDITY, NITRATE");
+                    }
+                    break;
+                case "--last":
+                    if (i + 1 >= args.length) {
+                        throw new IllegalArgumentException("не указано число");
+                    }
+                    try {
+                        last = Integer.parseInt(args[++i]);
+                        if (last <= 0) {
+                            throw new IllegalArgumentException("число должно быть положительным");
+                        }
+                    } catch (NumberFormatException e) {
+                        throw new IllegalArgumentException("некорректное число");
+                    }
+                    break;
+                default:
+                    throw new IllegalArgumentException("неизвестная опция: " + args[i]);
+            }
+        }
+
+        // Получаем все измерения
+        List<Measurement> allMeasurements = measurementRepository.findBySampleId(sampleId);
+        List<Measurement> measurements = new ArrayList<>();
+
+        // Фильтруем вручную (без лямбд)
+        for (Measurement m : allMeasurements) {
+            boolean matches = true;
+
+            // Проверяем фильтр по параметру
+            if (paramFilter != null && m.param != paramFilter) {
+                matches = false;
+            }
+
+            if (matches) {
+                measurements.add(m);
+            }
+        }
+
+        // Сортировка по убыванию времени (сначала новые)
+        measurements.sort((m1, m2) -> m2.measuredAt.compareTo(m1.measuredAt));
+
+        if (last != null && last < measurements.size()) {
+            measurements = measurements.subList(0, last);
+        }
+
+        if (measurements.isEmpty()) {
+            System.out.println("Нет измерений для отображения");
+            return;
+        }
+
+        System.out.printf("%-5s %-12s %-10s %-8s %-15s %-20s%n",
+                "ID", "Param", "Value", "Unit", "Method", "Time");
+        System.out.println("-".repeat(80));
+
+        for (Measurement m : measurements) {
+            String timeStr = m.measuredAt.toString().replace("T", " ").substring(0, 19);
+            System.out.printf("%-5d %-12s %-10.2f %-8s %-15s %-20s%n",
+                    m.id, m.param, m.value, m.unit, truncate(m.method, 15), timeStr);
+        }
+    }
+
+    private void measStats(String[] args) {
+        if (args.length != 2) {
+            throw new IllegalArgumentException("использование: meas_stats <sample_id> <param>");
+        }
+
+        long sampleId;
+        try {
+            sampleId = Long.parseLong(args[0]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("id образца должен быть числом");
+        }
+
+        String paramStr = args[1].toUpperCase();
+        MeasurementParam param;
+        try {
+            param = MeasurementParam.valueOf(paramStr);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("неизвестный параметр, используйте PH, CONDUCTIVITY, TURBIDITY, NITRATE");
+        }
+
+        List<Measurement> measurements = measurementRepository.findBySampleIdAndParam(sampleId, param);
+
+        if (measurements.isEmpty()) {
+            throw new IllegalArgumentException("нет измерений " + param + " для sample=" + sampleId);
+        }
+
+        double sum = 0;
+        double min = Double.MAX_VALUE;
+        double max = Double.MIN_VALUE;
+
+        for (Measurement m : measurements) {
+            double val = m.value;
+            sum += val;
+            if (val < min) min = val;
+            if (val > max) max = val;
+        }
+
+        double avg = sum / measurements.size();
+
+        System.out.println("count: " + measurements.size());
+        System.out.println("min: " + min);
+        System.out.println("max: " + max);
+        System.out.println("avg: " + avg);
+    }
+
 }
