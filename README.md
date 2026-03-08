@@ -12,3 +12,6 @@ mvn clean package
 ```bash
 mvn exec:java
 ```
+## Авторы
+Бузинова Мария,
+Александра Черняк
