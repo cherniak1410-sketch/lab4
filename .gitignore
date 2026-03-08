@@ -1,0 +1,23 @@
+# Папка сборки
+target/
+*.jar
+*.war
+*.ear
+
+# Настройки IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.classpath
+.project
+.settings/
+bin/
+
+# Логи
+*.log
+
+# Временные файлы
+*.tmp
+*.temp
+*~
