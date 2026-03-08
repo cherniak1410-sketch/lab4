@@ -1,10 +1,8 @@
 package ru.yourteam.lab;
 
-import ru.yourteam.lab.domain.Measurement;
-import ru.yourteam.lab.domain.MeasurementParam;
-import ru.yourteam.lab.domain.Sample;
-import ru.yourteam.lab.domain.SampleStatus;
+import ru.yourteam.lab.domain.*;
 import ru.yourteam.lab.repository.MeasurementRepository;
+import ru.yourteam.lab.repository.ProtocolRepository;
 import ru.yourteam.lab.repository.SampleRepository;
 
 
@@ -21,6 +19,7 @@ public class LabApp {
     private final Scanner scanner = new Scanner(System.in);
     private final SampleRepository sampleRepository = new SampleRepository();
     private final MeasurementRepository measurementRepository = new MeasurementRepository();
+    private final ProtocolRepository protocolRepository = new ProtocolRepository();  // ← добавить
 
 
     public static void main(String[] args) {
@@ -59,6 +58,7 @@ public class LabApp {
         String[] args = Arrays.copyOfRange(parts, 1, parts.length);
 
         switch (command) {
+            // ... существующие команды ...
             case "sample_add":
                 sampleAdd();
                 break;
@@ -82,6 +82,13 @@ public class LabApp {
                 break;
             case "meas_stats":
                 measStats(args);
+                break;
+            // НОВЫЕ КОМАНДЫ ↓↓↓
+            case "prot_create":
+                protCreate();
+                break;
+            case "prot_apply":
+                protApply(args);
                 break;
             default:
                 System.out.println("Неизвестная команда: " + command);
@@ -546,6 +553,89 @@ public class LabApp {
         System.out.println("min: " + min);
         System.out.println("max: " + max);
         System.out.println("avg: " + avg);
+    }
+    private void protCreate() {
+        System.out.println("Создание нового протокола:");
+
+        System.out.print("Название протокола: ");
+        String name = scanner.nextLine().trim();
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("имя протокола не может быть пустым");
+        }
+        if (name.length() > 128) {
+            throw new IllegalArgumentException("имя слишком длинное (макс. 128)");
+        }
+
+        System.out.print("Обязательные параметры (через запятую): ");
+        String paramsLine = scanner.nextLine().trim();
+        if (paramsLine.isEmpty()) {
+            throw new IllegalArgumentException("нужно указать хотя бы один параметр");
+        }
+
+        String[] paramNames = paramsLine.split("\\s*,\\s*");
+        Set<MeasurementParam> requiredParams = new HashSet<>();
+
+        for (String p : paramNames) {
+            try {
+                requiredParams.add(MeasurementParam.valueOf(p.toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("неизвестный параметр: " + p +
+                        ". Допустимые: PH, CONDUCTIVITY, TURBIDITY, NITRATE");
+            }
+        }
+
+        Protocol protocol = new Protocol();
+        protocol.name = name;
+        protocol.requiredParams = requiredParams;
+        protocol.ownerUsername = "SYSTEM";
+        protocol.createdAt = Instant.now();
+        protocol.updatedAt = protocol.createdAt;
+
+        protocolRepository.save(protocol);
+        System.out.println("OK protocol_id=" + protocol.id);
+    }
+    private void protApply(String[] args) {
+        if (args.length != 2) {
+            throw new IllegalArgumentException("использование: prot_apply <protocol_id> <sample_id>");
+        }
+
+        long protocolId;
+        long sampleId;
+
+        try {
+            protocolId = Long.parseLong(args[0]);
+            sampleId = Long.parseLong(args[1]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("id должен быть числом");
+        }
+
+        Protocol protocol = protocolRepository.findById(protocolId)
+                .orElseThrow(() -> new IllegalArgumentException("протокол с id=" + protocolId + " не найден"));
+
+        if (sampleRepository.findById(sampleId).isEmpty()) {
+            throw new IllegalArgumentException("образец с id=" + sampleId + " не найден");
+        }
+
+        // Получаем все измерения образца
+        List<Measurement> measurements = measurementRepository.findBySampleId(sampleId);
+
+        // Собираем множество параметров, которые уже измерены
+        Set<MeasurementParam> measuredParams = new HashSet<>();
+        for (Measurement m : measurements) {
+            measuredParams.add(m.param);
+        }
+
+        // Находим недостающие параметры
+        Set<MeasurementParam> missing = new HashSet<>(protocol.requiredParams);
+        missing.removeAll(measuredParams);
+
+        if (missing.isEmpty()) {
+            System.out.println("OK protocol is complete");
+        } else {
+            System.out.println("Missing params: " + missing.stream()
+                    .map(Enum::name)
+                    .collect(Collectors.joining(", ")));
+        }
     }
 
 }
