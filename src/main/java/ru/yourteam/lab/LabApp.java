@@ -1,9 +1,7 @@
 package ru.yourteam.lab;
 
 import ru.yourteam.lab.domain.*;
-import ru.yourteam.lab.repository.MeasurementRepository;
-import ru.yourteam.lab.repository.ProtocolRepository;
-import ru.yourteam.lab.repository.SampleRepository;
+import ru.yourteam.lab.repository.*;
 
 
 import java.time.Instant;
@@ -14,12 +12,16 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 
 public class LabApp {
     private final Scanner scanner = new Scanner(System.in);
     private final SampleRepository sampleRepository = new SampleRepository();
     private final MeasurementRepository measurementRepository = new MeasurementRepository();
-    private final ProtocolRepository protocolRepository = new ProtocolRepository();  // ← добавить
+    private final ProtocolRepository protocolRepository = new ProtocolRepository();
+    private final ReagentRepository reagentRepository = new ReagentRepository();    // ← добавить
+    private final BatchRepository batchRepository = new BatchRepository();          // ← добавить// ← добавить
 
 
     public static void main(String[] args) {
@@ -59,37 +61,31 @@ public class LabApp {
 
         switch (command) {
             // ... существующие команды ...
-            case "sample_add":
-                sampleAdd();
+            case "sample_add": sampleAdd(); break;
+            case "sample_list": sampleList(args); break;
+            case "sample_show": sampleShow(args); break;
+            case "sample_update": sampleUpdate(args); break;
+            case "sample_archive": sampleArchive(args); break;
+            case "meas_add": measAdd(args); break;
+            case "meas_list": measList(args); break;
+            case "meas_stats": measStats(args); break;
+            case "prot_create": protCreate(); break;
+            case "prot_apply": protApply(args); break;
+
+            // НОВЫЕ КОМАНДЫ ДНЯ 5 ↓↓↓
+            case "reag_add":
+                reagAdd();
                 break;
-            case "sample_list":
-                sampleList(args);
+            case "reag_list":
+                reagList(args);
                 break;
-            case "sample_show":
-                sampleShow(args);
+            case "batch_add":
+                batchAdd(args);
                 break;
-            case "sample_update":
-                sampleUpdate(args);
+            case "batch_list":
+                batchList(args);
                 break;
-            case "sample_archive":
-                sampleArchive(args);
-                break;
-            case "meas_add":
-                measAdd(args);
-                break;
-            case "meas_list":
-                measList(args);
-                break;
-            case "meas_stats":
-                measStats(args);
-                break;
-            // НОВЫЕ КОМАНДЫ ↓↓↓
-            case "prot_create":
-                protCreate();
-                break;
-            case "prot_apply":
-                protApply(args);
-                break;
+
             default:
                 System.out.println("Неизвестная команда: " + command);
         }
@@ -637,5 +633,211 @@ public class LabApp {
                     .collect(Collectors.joining(", ")));
         }
     }
+    private void reagAdd() {
+        System.out.println("Создание нового реактива:");
 
+        System.out.print("Название: ");
+        String name = scanner.nextLine().trim();
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("название не может быть пустым");
+        }
+        if (name.length() > 128) {
+            throw new IllegalArgumentException("название слишком длинное (макс. 128)");
+        }
+
+        System.out.print("Формула (можно пусто): ");
+        String formula = scanner.nextLine().trim();
+        if (formula.isEmpty()) formula = null;
+
+        System.out.print("CAS (можно пусто): ");
+        String cas = scanner.nextLine().trim();
+        if (cas.isEmpty()) cas = null;
+
+        System.out.print("Класс опасности (можно пусто): ");
+        String hazard = scanner.nextLine().trim();
+        if (hazard.isEmpty()) hazard = null;
+
+        Reagent reagent = new Reagent();
+        reagent.name = name;
+        reagent.formula = formula;
+        reagent.cas = cas;
+        reagent.hazardClass = hazard;
+        reagent.ownerUsername = "SYSTEM";
+        reagent.createdAt = Instant.now();
+        reagent.updatedAt = reagent.createdAt;
+
+        reagentRepository.save(reagent);
+        System.out.println("OK reagent_id=" + reagent.id);
+    }
+    private void reagList(String[] args) {
+        String query = null;
+
+        for (int i = 0; i < args.length; i++) {
+            if ("--q".equals(args[i])) {
+                if (i + 1 >= args.length) {
+                    throw new IllegalArgumentException("не указан запрос");
+                }
+                query = args[++i];
+                if (query.length() > 64) {
+                    throw new IllegalArgumentException("запрос слишком длинный (макс. 64)");
+                }
+            } else {
+                throw new IllegalArgumentException("неизвестная опция: " + args[i]);
+            }
+        }
+
+        List<Reagent> reagents;
+        if (query != null) {
+            reagents = reagentRepository.search(query);
+        } else {
+            reagents = reagentRepository.findAll();
+        }
+
+        if (reagents.isEmpty()) {
+            System.out.println("Реактивы не найдены");
+            return;
+        }
+
+        System.out.printf("%-5s %-20s %-15s %-15s%n", "ID", "Name", "Formula", "CAS");
+        System.out.println("-".repeat(60));
+
+        for (Reagent r : reagents) {
+            System.out.printf("%-5d %-20s %-15s %-15s%n",
+                    r.id,
+                    truncate(r.name, 20),
+                    r.formula != null ? truncate(r.formula, 15) : "",
+                    r.cas != null ? r.cas : "");
+        }
+    }
+    private void batchAdd(String[] args) {
+        if (args.length != 1) {
+            throw new IllegalArgumentException("использование: batch_add <reagent_id>");
+        }
+
+        long reagentId;
+        try {
+            reagentId = Long.parseLong(args[0]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("id реактива должен быть числом");
+        }
+
+        Reagent reagent = reagentRepository.findById(reagentId)
+                .orElseThrow(() -> new IllegalArgumentException("реактив с id=" + reagentId + " не найден"));
+
+        System.out.println("Добавление партии к реактиву: " + reagent.name);
+
+        System.out.print("Номер партии (label): ");
+        String label = scanner.nextLine().trim();
+        if (label.isEmpty()) {
+            throw new IllegalArgumentException("номер партии не может быть пустым");
+        }
+
+        System.out.print("Начальное количество: ");
+        String qtyStr = scanner.nextLine().trim();
+        double initialQty;
+        try {
+            initialQty = Double.parseDouble(qtyStr);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("количество должно быть числом");
+        }
+        if (initialQty <= 0) {
+            throw new IllegalArgumentException("количество должно быть положительным");
+        }
+
+        System.out.print("Единицы (g|mL): ");
+        String unit = scanner.nextLine().trim();
+        if (!unit.equals("g") && !unit.equals("mL")) {
+            throw new IllegalArgumentException("единицы только g или mL");
+        }
+
+        System.out.print("Где хранится: ");
+        String location = scanner.nextLine().trim();
+        if (location.isEmpty()) {
+            throw new IllegalArgumentException("место не может быть пустым");
+        }
+
+        System.out.print("Годен до (YYYY-MM-DD, можно пусто): ");
+        String expiryStr = scanner.nextLine().trim();
+        LocalDate expiryDate = null;
+        if (!expiryStr.isEmpty()) {
+            try {
+                expiryDate = LocalDate.parse(expiryStr);
+            } catch (DateTimeParseException e) {
+                throw new IllegalArgumentException("неверный формат даты, используйте YYYY-MM-DD");
+            }
+        }
+
+        ReagentBatch batch = new ReagentBatch();
+        batch.reagentId = reagentId;
+        batch.label = label;
+        batch.initialQty = initialQty;
+        batch.currentQty = initialQty;
+        batch.unit = unit;
+        batch.location = location;
+        batch.expiryDate = expiryDate;
+        batch.status = "ACTIVE";
+        batch.createdAt = Instant.now();
+        batch.updatedAt = batch.createdAt;
+
+        batchRepository.save(batch);
+        System.out.println("OK batch_id=" + batch.id);
+    }
+    private void batchList(String[] args) {
+        if (args.length < 1) {
+            throw new IllegalArgumentException("использование: batch_list <reagent_id> [--active]");
+        }
+
+        long reagentId;
+        try {
+            reagentId = Long.parseLong(args[0]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("id реактива должен быть числом");
+        }
+
+        if (reagentRepository.findById(reagentId).isEmpty()) {
+            throw new IllegalArgumentException("реактив с id=" + reagentId + " не найден");
+        }
+
+        boolean activeOnly = false;
+        for (int i = 1; i < args.length; i++) {
+            if ("--active".equals(args[i])) {
+                activeOnly = true;
+            } else {
+                throw new IllegalArgumentException("неизвестная опция: " + args[i]);
+            }
+        }
+
+        List<ReagentBatch> batches = batchRepository.findByReagentId(reagentId);
+
+        if (activeOnly) {
+            List<ReagentBatch> filtered = new ArrayList<>();
+            for (ReagentBatch b : batches) {
+                if ("ACTIVE".equals(b.status)) {
+                    filtered.add(b);
+                }
+            }
+            batches = filtered;
+        }
+
+        if (batches.isEmpty()) {
+            System.out.println("Партии не найдены");
+            return;
+        }
+
+        System.out.printf("%-5s %-15s %-10s %-5s %-10s %-8s %-12s%n",
+                "ID", "Label", "Qty", "Unit", "Location", "Status", "Expires");
+        System.out.println("-".repeat(75));
+
+        for (ReagentBatch b : batches) {
+            String expiryStr = b.expiryDate != null ? b.expiryDate.toString() : "";
+            System.out.printf("%-5d %-15s %-10.1f %-5s %-10s %-8s %-12s%n",
+                    b.id,
+                    truncate(b.label, 15),
+                    b.currentQty,
+                    b.unit,
+                    truncate(b.location, 10),
+                    b.status,
+                    expiryStr);
+        }
+    }
 }
