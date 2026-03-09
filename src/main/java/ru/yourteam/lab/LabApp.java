@@ -21,7 +21,8 @@ public class LabApp {
     private final MeasurementRepository measurementRepository = new MeasurementRepository();
     private final ProtocolRepository protocolRepository = new ProtocolRepository();
     private final ReagentRepository reagentRepository = new ReagentRepository();    // ← добавить
-    private final BatchRepository batchRepository = new BatchRepository();          // ← добавить// ← добавить
+    private final BatchRepository batchRepository = new BatchRepository();
+    private final MoveRepository moveRepository = new MoveRepository();// ← добавить// ← добавить
 
 
     public static void main(String[] args) {
@@ -71,19 +72,17 @@ public class LabApp {
             case "meas_stats": measStats(args); break;
             case "prot_create": protCreate(); break;
             case "prot_apply": protApply(args); break;
+            case "reag_add": reagAdd(); break;
+            case "reag_list": reagList(args); break;
+            case "batch_add": batchAdd(args); break;
+            case "batch_list": batchList(args); break;
 
-            // НОВЫЕ КОМАНДЫ ДНЯ 5 ↓↓↓
-            case "reag_add":
-                reagAdd();
+            // НОВЫЕ КОМАНДЫ ДНЯ 6 ↓↓↓
+            case "batch_show":
+                batchShow(args);
                 break;
-            case "reag_list":
-                reagList(args);
-                break;
-            case "batch_add":
-                batchAdd(args);
-                break;
-            case "batch_list":
-                batchList(args);
+            case "move_add":
+                moveAdd(args);
                 break;
 
             default:
@@ -838,6 +837,146 @@ public class LabApp {
                     truncate(b.location, 10),
                     b.status,
                     expiryStr);
+        }
+    }
+    private void batchShow(String[] args) {
+        if (args.length != 1) {
+            throw new IllegalArgumentException("использование: batch_show <batch_id>");
+        }
+
+        long batchId;
+        try {
+            batchId = Long.parseLong(args[0]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("id партии должен быть числом");
+        }
+
+        ReagentBatch batch = batchRepository.findById(batchId)
+                .orElseThrow(() -> new IllegalArgumentException("партия с id=" + batchId + " не найдена"));
+
+        Reagent reagent = reagentRepository.findById(batch.reagentId)
+                .orElseThrow(() -> new IllegalStateException("реактив не найден для партии")); // не должно случиться
+
+        System.out.println("Batch #" + batch.id);
+        System.out.println("reagent: " + reagent.name +
+                (reagent.formula != null ? " (" + reagent.formula + ")" : ""));
+        System.out.println("label: " + batch.label);
+        System.out.println("qty_current: " + batch.currentQty + " " + batch.unit);
+        System.out.println("location: " + batch.location);
+        System.out.println("expires: " + (batch.expiryDate != null ? batch.expiryDate : "не указано"));
+        System.out.println("status: " + batch.status);
+
+        // Показываем историю движений (последние 5)
+        List<StockMove> moves = moveRepository.findByBatchId(batchId);
+        if (!moves.isEmpty()) {
+            System.out.println("\nRecent moves:");
+            int count = 0;
+            for (StockMove m : moves) {
+                if (count++ >= 5) break;
+                String reason = m.reason != null ? " (" + m.reason + ")" : "";
+                System.out.printf("  %s %s%.1f %s at %s%s%n",
+                        m.type,
+                        m.type == MoveType.IN ? "+" : "-",
+                        m.quantity,
+                        batch.unit,
+                        m.movedAt.toString().replace("T", " ").substring(0, 16),
+                        reason);
+            }
+        }
+    }
+    private void moveAdd(String[] args) {
+        if (args.length != 1) {
+            throw new IllegalArgumentException("использование: move_add <batch_id>");
+        }
+
+        long batchId;
+        try {
+            batchId = Long.parseLong(args[0]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("id партии должен быть числом");
+        }
+
+        ReagentBatch batch = batchRepository.findById(batchId)
+                .orElseThrow(() -> new IllegalArgumentException("партия с id=" + batchId + " не найдена"));
+
+        System.out.println("Добавление движения для партии: " + batch.label);
+
+        System.out.print("Тип (IN/OUT/DISCARD): ");
+        String typeStr = scanner.nextLine().trim().toUpperCase();
+        MoveType type;
+        try {
+            type = MoveType.valueOf(typeStr);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("тип должен быть IN, OUT или DISCARD");
+        }
+
+        System.out.print("Количество: ");
+        String qtyStr = scanner.nextLine().trim();
+        double quantity;
+        try {
+            quantity = Double.parseDouble(qtyStr);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("количество должно быть числом");
+        }
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("количество должно быть положительным");
+        }
+
+        // Проверка остатка для OUT и DISCARD
+        if ((type == MoveType.OUT || type == MoveType.DISCARD) && quantity > batch.currentQty) {
+            throw new IllegalArgumentException("недостаточно реактива: доступно " +
+                    batch.currentQty + " " + batch.unit);
+        }
+
+        System.out.print("Причина (можно пусто): ");
+        String reason = scanner.nextLine().trim();
+        if (reason.isEmpty()) reason = null;
+
+        // Создаём движение
+        StockMove move = new StockMove();
+        move.batchId = batchId;
+        move.type = type;
+        move.quantity = quantity;
+        move.reason = reason;
+        move.movedAt = Instant.now();
+        move.ownerUsername = "SYSTEM";
+        move.createdAt = move.movedAt;
+
+        moveRepository.save(move);
+
+        // Обновляем остаток партии
+        switch (type) {
+            case IN:
+                batch.currentQty += quantity;
+                break;
+            case OUT:
+            case DISCARD:
+                batch.currentQty -= quantity;
+                break;
+        }
+
+        // Если остаток стал 0, меняем статус
+        if (batch.currentQty == 0) {
+            batch.status = "EMPTY";
+        }
+
+        batch.updatedAt = Instant.now();
+        batchRepository.save(batch);
+
+        System.out.println("OK move recorded");
+        System.out.println("New balance: " + batch.currentQty + " " + batch.unit);
+    }
+    private void checkExpiryDates() {
+        LocalDate today = LocalDate.now();
+        for (ReagentBatch batch : batchRepository.findAll()) {
+            if (batch.expiryDate != null &&
+                    batch.expiryDate.isBefore(today) &&
+                    "ACTIVE".equals(batch.status)) {
+                batch.status = "EXPIRED";
+                batch.updatedAt = Instant.now();
+                batchRepository.save(batch);
+                System.out.println("Batch " + batch.id + " expired");
+            }
         }
     }
 }
