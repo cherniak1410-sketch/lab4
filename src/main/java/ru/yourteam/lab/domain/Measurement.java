@@ -2,38 +2,79 @@ package ru.yourteam.lab.domain;
 
 import java.time.Instant;
 
-public final class Measurement {
-    // Уникальный номер измерения. Программа назначает сама.
-    public long id;
+public class Measurement {
+    private long id;
+    private long sampleId;
+    private MeasurementParam param;
+    private double value;
+    private String unit;
+    private String method;
+    private Instant measuredAt;
+    private String ownerUsername;
+    private Instant createdAt;
+    private Instant updatedAt;
 
-    // К какому образцу относится измерение (id образца).
-    // Должен ссылаться на реально существующий Sample.
-    public long sampleId;
+    // Конструктор для создания нового измерения
+    public Measurement(long sampleId, MeasurementParam param, double value,
+                       String unit, String method) {
+        this.sampleId = sampleId;
+        this.param = param;
+        this.value = value;
+        this.unit = unit;
+        this.method = method;
+        this.ownerUsername = "SYSTEM";
+        this.measuredAt = Instant.now();
+        this.createdAt = Instant.now();
+        this.updatedAt = Instant.now();
+    }
 
-    // Что измеряли (PH, CONDUCTIVITY...). Выбирается из списка MeasurementParam.
-    public MeasurementParam param;
+    // Геттеры (получить значения)
+    public long getId() { return id; }
+    public long getSampleId() { return sampleId; }
+    public MeasurementParam getParam() { return param; }
+    public double getValue() { return value; }
+    public String getUnit() { return unit; }
+    public String getMethod() { return method; }
+    public Instant getMeasuredAt() { return measuredAt; }
+    public String getOwnerUsername() { return ownerUsername; }
+    public Instant getCreatedAt() { return createdAt; }
+    public Instant getUpdatedAt() { return updatedAt; }
 
-    // Значение измерения. Должно быть обычным числом (не текст, не NaN/Infinity).
-    public double value;
+    // Сеттеры (изменить значения)
+    public void setId(long id) { this.id = id; }
 
-    // Единицы измерения (например: "pH", "mS/cm", "NTU", "mg/L").
-    // Нельзя пустое. Желательно до 16 символов.
-    public String unit;
+    public void setSampleId(long sampleId) {
+        this.sampleId = sampleId;
+        this.updatedAt = Instant.now();
+    }
 
-    // Метод измерения (например: "electrode", "sensor", "spectro").
-    // Нельзя пустое. Желательно до 64 символов.
-    public String method;
+    public void setParam(MeasurementParam param) {
+        this.param = param;
+        this.updatedAt = Instant.now();
+    }
 
-    // Время, когда измерили. Если пользователь не вводит — ставится текущее время.
-    public Instant measuredAt;
+    public void setValue(double value) {
+        this.value = value;
+        this.updatedAt = Instant.now();
+    }
 
-    // Кто добавил измерение (логин пользователя). На ранних этапах можно "SYSTEM".
-    // Не должен быть пустым.
-    public String ownerUsername;
+    public void setUnit(String unit) {
+        this.unit = unit;
+        this.updatedAt = Instant.now();
+    }
 
-    // Когда запись создана. Программа ставит автоматически.
-    public Instant createdAt;
+    public void setMethod(String method) {
+        this.method = method;
+        this.updatedAt = Instant.now();
+    }
 
-    // Когда запись правили (если разрешаете update значения/метода/единиц).
-    public Instant updatedAt;
+    public void setMeasuredAt(Instant measuredAt) {
+        this.measuredAt = measuredAt;
+        this.updatedAt = Instant.now();
+    }
+
+    public void setOwnerUsername(String ownerUsername) {
+        this.ownerUsername = ownerUsername;
+        this.updatedAt = Instant.now();
+    }
 }
