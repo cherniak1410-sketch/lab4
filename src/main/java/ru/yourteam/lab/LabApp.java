@@ -61,35 +61,82 @@ public class LabApp {
         String[] args = Arrays.copyOfRange(parts, 1, parts.length);
 
         switch (command) {
-            // ... существующие команды ...
-            case "sample_add": sampleAdd(); break;
-            case "sample_list": sampleList(args); break;
-            case "sample_show": sampleShow(args); break;
-            case "sample_update": sampleUpdate(args); break;
-            case "sample_archive": sampleArchive(args); break;
-            case "meas_add": measAdd(args); break;
-            case "meas_list": measList(args); break;
-            case "meas_stats": measStats(args); break;
-            case "prot_create": protCreate(); break;
-            case "prot_apply": protApply(args); break;
-            case "reag_add": reagAdd(); break;
-            case "reag_list": reagList(args); break;
-            case "batch_add": batchAdd(args); break;
-            case "batch_list": batchList(args); break;
+            // === Образцы (Samples) - 5 команд ===
+            case "sample_add":
+                sampleAdd();
+                break;
+            case "sample_list":
+                sampleList(args);
+                break;
+            case "sample_show":
+                sampleShow(args);
+                break;
+            case "sample_update":
+                sampleUpdate(args);
+                break;
+            case "sample_archive":
+                sampleArchive(args);
+                break;
 
-            // НОВЫЕ КОМАНДЫ ДНЯ 6 ↓↓↓
+            // === Измерения (Measurements) - 3 команды ===
+            case "meas_add":
+                measAdd(args);
+                break;
+            case "meas_list":
+                measList(args);
+                break;
+            case "meas_stats":
+                measStats(args);
+                break;
+
+            // === Протоколы (Protocols) - 2 команды ===
+            case "prot_create":
+                protCreate();
+                break;
+            case "prot_apply":
+                protApply(args);
+                break;
+
+            // === Реактивы (Reagents) - 4 команды ===
+            case "reag_add":
+                reagAdd();
+                break;
+            case "reag_list":
+                reagList(args);
+                break;
+            case "reag_show":
+                reagShow(args);
+                break;
+            case "reag_update":
+                reagUpdate(args);
+                break;
+
+            // === Партии (Batches) - 4 команды ===
+            case "batch_add":
+                batchAdd(args);
+                break;
+            case "batch_list":
+                batchList(args);
+                break;
             case "batch_show":
                 batchShow(args);
                 break;
+            case "batch_update":
+                batchUpdate(args);
+                break;
+
+            // === Движения (Moves) - 2 команды ===
             case "move_add":
                 moveAdd(args);
+                break;
+            case "move_list":
+                moveList(args);
                 break;
 
             default:
                 System.out.println("Неизвестная команда: " + command);
         }
     }
-
     private void sampleAdd() {
         System.out.println("Создание нового образца:");
 
@@ -977,6 +1024,180 @@ public class LabApp {
                 batchRepository.save(batch);
                 System.out.println("Batch " + batch.id + " expired");
             }
+        }
+    }
+    private void reagShow(String[] args) {
+        if (args.length != 1) {
+            throw new IllegalArgumentException("использование: reag_show <reagent_id>");
+        }
+
+        long id;
+        try {
+            id = Long.parseLong(args[0]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("id должен быть числом");
+        }
+
+        Reagent reagent = reagentRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("реактив с id=" + id + " не найден"));
+
+        System.out.println("Reagent #" + reagent.id);
+        System.out.println("name: " + reagent.name);
+        System.out.println("formula: " + (reagent.formula != null ? reagent.formula : "не указано"));
+        System.out.println("CAS: " + (reagent.cas != null ? reagent.cas : "не указано"));
+        System.out.println("hazard class: " + (reagent.hazardClass != null ? reagent.hazardClass : "не указано"));
+        System.out.println("owner: " + reagent.ownerUsername);
+        System.out.println("created: " + reagent.createdAt);
+        System.out.println("updated: " + reagent.updatedAt);
+
+        // Показываем количество партий
+        List<ReagentBatch> batches = batchRepository.findByReagentId(id);
+        System.out.println("batches: " + batches.size());
+
+        // Общее количество
+        double total = 0;
+        for (ReagentBatch b : batches) {
+            total += b.currentQty;
+        }
+        if (!batches.isEmpty()) {
+            System.out.println("total quantity: " + total + " " + batches.get(0).unit);
+        }
+    }
+    private void reagUpdate(String[] args) {
+        if (args.length < 2) {
+            throw new IllegalArgumentException("использование: reag_update <id> field=value ...");
+        }
+
+        long id;
+        try {
+            id = Long.parseLong(args[0]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("id должен быть числом");
+        }
+
+        Reagent reagent = reagentRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("реактив с id=" + id + " не найден"));
+
+        for (int i = 1; i < args.length; i++) {
+            String[] parts = args[i].split("=", 2);
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("неверный формат: " + args[i]);
+            }
+
+            String field = parts[0];
+            String value = parts[1];
+
+            if (value.startsWith("\"") && value.endsWith("\"")) {
+                value = value.substring(1, value.length() - 1);
+            }
+
+            switch (field) {
+                case "name":
+                    if (value.isEmpty()) throw new IllegalArgumentException("name не может быть пустым");
+                    if (value.length() > 128) throw new IllegalArgumentException("name слишком длинное");
+                    reagent.name = value;
+                    break;
+                case "formula":
+                    reagent.formula = value.isEmpty() ? null : value;
+                    break;
+                case "cas":
+                    reagent.cas = value.isEmpty() ? null : value;
+                    break;
+                case "hazard":
+                    reagent.hazardClass = value.isEmpty() ? null : value;
+                    break;
+                default:
+                    throw new IllegalArgumentException("нельзя менять поле '" + field + "'");
+            }
+        }
+
+        reagent.updatedAt = Instant.now();
+        reagentRepository.save(reagent);
+        System.out.println("OK");
+    }
+    private void batchUpdate(String[] args) {
+        if (args.length < 2) {
+            throw new IllegalArgumentException("использование: batch_update <id> field=value ...");
+        }
+
+        long id;
+        try {
+            id = Long.parseLong(args[0]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("id должен быть числом");
+        }
+
+        ReagentBatch batch = batchRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("партия с id=" + id + " не найдена"));
+
+        for (int i = 1; i < args.length; i++) {
+            String[] parts = args[i].split("=", 2);
+            if (parts.length != 2) {
+                throw new IllegalArgumentException("неверный формат: " + args[i]);
+            }
+
+            String field = parts[0];
+            String value = parts[1];
+
+            if (value.startsWith("\"") && value.endsWith("\"")) {
+                value = value.substring(1, value.length() - 1);
+            }
+
+            switch (field) {
+                case "label":
+                    if (value.isEmpty()) throw new IllegalArgumentException("label не может быть пустым");
+                    batch.label = value;
+                    break;
+                case "location":
+                    if (value.isEmpty()) throw new IllegalArgumentException("location не может быть пустым");
+                    batch.location = value;
+                    break;
+                case "status":
+                    if (!value.equals("ACTIVE") && !value.equals("EXPIRED") && !value.equals("EMPTY")) {
+                        throw new IllegalArgumentException("статус должен быть ACTIVE, EXPIRED или EMPTY");
+                    }
+                    batch.status = value;
+                    break;
+                default:
+                    throw new IllegalArgumentException("нельзя менять поле '" + field + "'");
+            }
+        }
+
+        batch.updatedAt = Instant.now();
+        batchRepository.save(batch);
+        System.out.println("OK");
+    }
+    private void moveList(String[] args) {
+        if (args.length != 1) {
+            throw new IllegalArgumentException("использование: move_list <batch_id>");
+        }
+
+        long batchId;
+        try {
+            batchId = Long.parseLong(args[0]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("id должен быть числом");
+        }
+
+        if (batchRepository.findById(batchId).isEmpty()) {
+            throw new IllegalArgumentException("партия с id=" + batchId + " не найдена");
+        }
+
+        List<StockMove> moves = moveRepository.findByBatchId(batchId);
+
+        if (moves.isEmpty()) {
+            System.out.println("Нет движений для этой партии");
+            return;
+        }
+
+        System.out.printf("%-5s %-8s %-10s %-15s %-20s%n", "ID", "Type", "Quantity", "Reason", "Time");
+        System.out.println("-".repeat(65));
+
+        for (StockMove m : moves) {
+            String reason = m.reason != null ? m.reason : "";
+            String timeStr = m.movedAt.toString().replace("T", " ").substring(0, 16);
+            System.out.printf("%-5d %-8s %-10.1f %-15s %-20s%n",
+                    m.id, m.type, m.quantity, truncate(reason, 15), timeStr);
         }
     }
 }
