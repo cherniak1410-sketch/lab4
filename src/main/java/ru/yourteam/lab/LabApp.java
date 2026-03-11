@@ -143,11 +143,7 @@ public class LabApp {
         List<Sample> samples = new ArrayList<>();
 
         for (Sample s : allSamples) {
-            boolean matches = true;
-
-            if (statusFilter != null && s.getStatus() != statusFilter) {
-                matches = false;
-            }
+            boolean matches = statusFilter == null || s.getStatus() == statusFilter;
 
             if (matches && mine) {
                 String currentUser = "SYSTEM";

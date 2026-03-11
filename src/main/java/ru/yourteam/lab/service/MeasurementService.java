@@ -5,7 +5,6 @@ import ru.yourteam.lab.domain.MeasurementParam;
 import ru.yourteam.lab.validator.MeasurementValidator;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class MeasurementService {
     private final Map<Long, Measurement> storage = new LinkedHashMap<>();

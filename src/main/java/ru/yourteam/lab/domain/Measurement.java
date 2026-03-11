@@ -11,7 +11,7 @@ public class Measurement {
     private String method;
     private Instant measuredAt;
     private String ownerUsername;
-    private Instant createdAt;
+    private final Instant createdAt;
     private Instant updatedAt;
 
     // Конструктор для создания нового измерения

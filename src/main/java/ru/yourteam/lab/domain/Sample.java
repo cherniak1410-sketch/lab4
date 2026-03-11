@@ -9,7 +9,7 @@ public class Sample {
     private String location;
     private SampleStatus status;
     private String ownerUsername;
-    private Instant createdAt;
+    private final Instant createdAt;
     private Instant updatedAt;
 
 
