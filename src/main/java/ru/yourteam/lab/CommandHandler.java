@@ -2,7 +2,9 @@ package ru.yourteam.lab;
 
 import ru.yourteam.lab.domain.*;
 import ru.yourteam.lab.service.*;
-
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 
 import java.util.*;
 
@@ -21,7 +23,12 @@ public class CommandHandler {
         this.measurementService = measurementService;
         this.protocolService = protocolService;
     }
-
+    private String formatInstant(Instant instant) {
+        if (instant == null) return "";
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                .withZone(ZoneId.systemDefault());
+        return formatter.format(instant);
+    }
     public void executeCommand(String line) {
         String[] parts = line.split("\\s+");
         String command = parts[0];
@@ -196,8 +203,8 @@ public class CommandHandler {
         System.out.println("location: " + sample.getLocation());
         System.out.println("status: " + sample.getStatus());
         System.out.println("owner: " + sample.getOwnerUsername());
-        System.out.println("created: " + sample.getCreatedAt());
-        System.out.println("updated: " + sample.getUpdatedAt());
+        System.out.println("created: " + formatInstant(sample.getCreatedAt()));
+        System.out.println("updated: " + formatInstant(sample.getUpdatedAt()));
         System.out.println("measurements: " + measurements.size());
 
         if (params.isEmpty()) {
@@ -383,7 +390,7 @@ public class CommandHandler {
         System.out.println("-".repeat(80));
 
         for (Measurement m : measurements) {
-            String timeStr = m.getMeasuredAt().toString().replace("T", " ").substring(0, 19);
+            String timeStr = formatInstant(m.getMeasuredAt());
             System.out.printf("%-5d %-12s %-10.2f %-8s %-15s %-20s%n",
                     m.getId(), m.getParam(), m.getValue(), m.getUnit(),
                     truncate(m.getMethod(), 15), timeStr);
