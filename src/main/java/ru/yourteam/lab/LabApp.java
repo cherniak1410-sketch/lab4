@@ -59,7 +59,7 @@ public class LabApp {
             String line = scanner.nextLine().trim();
 
             if (line.equals("exit")) {
-                System.out.println("До свидания!");
+                System.out.println("До свидания, " + currentUser + "!");
                 break;
             }
 
