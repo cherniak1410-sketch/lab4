@@ -27,7 +27,7 @@ public class LabApp {
         System.out.println("Добро пожаловать, " + currentUser + "!\n");
 
         this.commandHandler = new CommandHandler(
-                scanner, sampleService, measurementService, protocolService
+                scanner, sampleService, measurementService, protocolService, currentUser
         );
 
         // Автозагрузка
