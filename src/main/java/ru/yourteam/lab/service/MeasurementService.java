@@ -85,4 +85,10 @@ public class MeasurementService {
 
         return stats;
     }
+    public Map<Long, Measurement> getStorage() {
+        return storage;
+    }
+    public void setNextId(long nextId) {
+        this.nextId = nextId;
+    }
 }
