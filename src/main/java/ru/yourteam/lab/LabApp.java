@@ -42,7 +42,11 @@ public class LabApp {
     }
 
     public static void main(String[] args) {
-        LabApp app = new LabApp();
+        String loadFile = null;
+        if (args.length > 0) {
+            loadFile = args[0];
+        }
+        LabApp app = new LabApp(loadFile);
         app.run();
     }
 
