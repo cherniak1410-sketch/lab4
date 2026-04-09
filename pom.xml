@@ -14,21 +14,18 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
-    <!-- 👇 ЭТО ДОБАВИТЬ -->
-    <repositories>
-        <repository>
-            <id>central</id>
-            <url>http://repo.maven.apache.org/maven2</url>
-        </repository>
-    </repositories>
-
-    <pluginRepositories>
-        <pluginRepository>
-            <id>central</id>
-            <url>http://repo.maven.apache.org/maven2</url>
-        </pluginRepository>
-    </pluginRepositories>
-    <!-- 👆 ДОБАВИТЬ ЭТО -->
+    <dependencies>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.15.2</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+            <version>2.15.2</version>
+        </dependency>
+    </dependencies>
 
     <build>
         <plugins>
