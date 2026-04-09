@@ -16,6 +16,16 @@ public class LabApp {
         this.commandHandler = new CommandHandler(
                 scanner, sampleService, measurementService, protocolService
         );
+
+        // Автозагрузка
+        if (loadFile != null && !loadFile.isEmpty()) {
+            try {
+                commandHandler.loadFromFile(loadFile);
+                System.out.println("Автоматически загружены данные из: " + loadFile);
+            } catch (Exception e) {
+                System.out.println("Не удалось загрузить файл: " + e.getMessage());
+            }
+        }
     }
 
     public static void main(String[] args) {
