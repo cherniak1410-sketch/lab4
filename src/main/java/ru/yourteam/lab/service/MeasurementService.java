@@ -68,7 +68,11 @@ public class MeasurementService {
                 .mapToDouble(Measurement::getValue)
                 .summaryStatistics();
 
-        double avg = sum / measurements.size();
+        Map<String, Object> result = new HashMap<>();
+        result.put("count", stats.getCount());
+        result.put("min", stats.getMin());
+        result.put("max", stats.getMax());
+        result.put("avg", stats.getAverage());
 
         Map<String, Object> stats = new HashMap<>();
         stats.put("count", measurements.size());
