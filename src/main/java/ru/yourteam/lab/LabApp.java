@@ -12,7 +12,20 @@ public class LabApp {
     private final ProtocolService protocolService = new ProtocolService();
     private final CommandHandler commandHandler;
 
-    public LabApp() {
+    public LabApp(String loadFile) {
+        // Запрос имени пользователя
+        String username;
+        while (true) {
+            System.out.print("Введите ваше имя: ");
+            username = scanner.nextLine().trim();
+            if (!username.isEmpty()) {
+                break;
+            }
+            System.out.println("Ошибка: имя не может быть пустым. Попробуйте снова.");
+        }
+        this.currentUser = username;
+        System.out.println("Добро пожаловать, " + currentUser + "!\n");
+
         this.commandHandler = new CommandHandler(
                 scanner, sampleService, measurementService, protocolService
         );
