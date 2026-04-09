@@ -11,6 +11,7 @@ public class LabApp {
     private final MeasurementService measurementService = new MeasurementService();
     private final ProtocolService protocolService = new ProtocolService();
     private final CommandHandler commandHandler;
+    private final String currentUser;
 
     public LabApp(String loadFile) {
         // Запрос имени пользователя
