@@ -96,4 +96,10 @@ public class SampleService {
         }
         return result;
     }
+    public Map<Long, Sample> getStorage() {
+        return storage;
+    }
+    public void setNextId(long nextId) {
+        this.nextId = nextId;
+    }
 }
