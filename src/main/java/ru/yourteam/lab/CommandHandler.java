@@ -2,26 +2,34 @@ package ru.yourteam.lab;
 
 import ru.yourteam.lab.domain.*;
 import ru.yourteam.lab.service.*;
+
+import java.io.IOException;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
 import java.util.*;
+import java.util.stream.Collectors;
+import ru.yourteam.lab.storage.FileStorage;
 
 public class CommandHandler {
     private final Scanner scanner;
     private final SampleService sampleService;
     private final MeasurementService measurementService;
     private final ProtocolService protocolService;
+    private final String currentUser;
+    private final FileStorage fileStorage;
 
     public CommandHandler(Scanner scanner,
                           SampleService sampleService,
                           MeasurementService measurementService,
-                          ProtocolService protocolService) {
+                          ProtocolService protocolService, String currentUser) {
         this.scanner = scanner;
         this.sampleService = sampleService;
         this.measurementService = measurementService;
         this.protocolService = protocolService;
+        this.currentUser = currentUser;
+        this.fileStorage = new FileStorage();
     }
     private String formatInstant(Instant instant) {
         if (instant == null) return "";
@@ -74,6 +82,15 @@ public class CommandHandler {
             //Помощь
             case "help":
                 printHelp();
+                break;
+
+
+            //
+            case "save":
+                save(args);
+                break;
+            case "load":
+                load(args);
                 break;
 
 
@@ -141,23 +158,12 @@ public class CommandHandler {
             }
         }
 
-        List<Sample> allSamples = sampleService.getAll();
-        List<Sample> samples = new ArrayList<>();
-
-        for (Sample s : allSamples) {
-            boolean matches = statusFilter == null || s.getStatus() == statusFilter;
-
-            if (matches && mine) {
-                String currentUser = "SYSTEM";
-                if (!currentUser.equals(s.getOwnerUsername())) {
-                    matches = false;
-                }
-            }
-
-            if (matches) {
-                samples.add(s);
-            }
-        }
+        SampleStatus finalStatusFilter = statusFilter;
+        boolean finalMine = mine;
+        List<Sample> samples = sampleService.getAll().stream()
+                .filter(s -> finalStatusFilter == null || s.getStatus() == finalStatusFilter)
+                .filter(s -> !finalMine || currentUser.equals(s.getOwnerUsername()))
+                .collect(Collectors.toList());
 
         System.out.printf("%-5s %-20s %-10s %-10s %-8s%n",
                 "ID", "Name", "Type", "Location", "Status");
@@ -192,10 +198,9 @@ public class CommandHandler {
         Sample sample = sampleService.getById(id);
         List<Measurement> measurements = measurementService.getBySampleId(id);
 
-        Set<MeasurementParam> params = new HashSet<>();
-        for (Measurement m : measurements) {
-            params.add(m.getParam());
-        }
+        Set<MeasurementParam> params = measurements.stream()
+                .map(Measurement::getParam)
+                .collect(Collectors.toSet());
 
         System.out.println("Sample #" + sample.getId());
         System.out.println("name: " + sample.getName());
@@ -510,6 +515,79 @@ public class CommandHandler {
                 return input;
             }
             System.out.println("Ошибка: " + errorMessage + " Попробуйте снова.");
+        }
+    }
+    private void save(String[] args) {
+        if (args.length != 1) {
+            throw new IllegalArgumentException("использование: save <path>");
+        }
+        String path = args[0];
+        try {
+            fileStorage.save(path,
+                    sampleService.getStorage(),
+                    measurementService.getStorage(),
+                    protocolService.getStorage());
+            System.out.println("OK сохранено в файл: " + path);
+        } catch (IOException e) {
+            throw new RuntimeException("Ошибка сохранения: " + e.getMessage());
+        }
+    }
+
+    private void load(String[] args) {
+        if (args.length != 1) {
+            throw new IllegalArgumentException("использование: load <path>");
+        }
+        String path = args[0];
+        loadFromFile(path);
+    }
+
+
+    public void loadFromFile(String path) {
+        try {
+            Map<String, Object> data = fileStorage.load(path);
+
+            // === Восстанавливаем образцы ===
+            List<Sample> samples = (List<Sample>) data.get("samples");
+            if (samples != null) {
+                Map<Long, Sample> sampleStorage = sampleService.getStorage();
+                sampleStorage.clear();
+                long maxId = 0;
+                for (Sample s : samples) {
+                    sampleStorage.put(s.getId(), s);
+                    if (s.getId() > maxId) maxId = s.getId();
+                }
+                sampleService.setNextId(maxId + 1);
+            }
+
+            // === Восстанавливаем измерения ===
+            List<Measurement> measurements = (List<Measurement>) data.get("measurements");
+            if (measurements != null) {
+                Map<Long, Measurement> measurementStorage = measurementService.getStorage();
+                measurementStorage.clear();
+                long maxId = 0;
+                for (Measurement m : measurements) {
+                    measurementStorage.put(m.getId(), m);
+                    if (m.getId() > maxId) maxId = m.getId();
+                }
+                measurementService.setNextId(maxId + 1);
+            }
+
+            // === Восстанавливаем протоколы ===
+            List<Protocol> protocols = (List<Protocol>) data.get("protocols");
+            if (protocols != null) {
+                Map<Long, Protocol> protocolStorage = protocolService.getStorage();
+                protocolStorage.clear();
+                long maxId = 0;
+                for (Protocol p : protocols) {
+                    protocolStorage.put(p.getId(), p);
+                    if (p.getId() > maxId) maxId = p.getId();
+                }
+                protocolService.setNextId(maxId + 1);
+            }
+
+            System.out.println("OK загружено из файла: " + path);
+        } catch (IOException e) {
+            throw new RuntimeException("Ошибка загрузки: " + e.getMessage());
         }
     }
 }
