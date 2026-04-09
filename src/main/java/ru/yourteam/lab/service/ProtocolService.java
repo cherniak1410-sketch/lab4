@@ -48,5 +48,11 @@ public class ProtocolService {
 
         return missing;
     }
+    public Map<Long, Protocol> getStorage() {
+        return storage;
+    }
+    public void setNextId(long nextId) {
+        this.nextId = nextId;
+    }
 }
 
