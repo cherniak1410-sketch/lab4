@@ -3,6 +3,8 @@ package ru.yourteam.lab.service;
 import ru.yourteam.lab.domain.Measurement;
 import ru.yourteam.lab.domain.MeasurementParam;
 import ru.yourteam.lab.validator.MeasurementValidator;
+import java.util.DoubleSummaryStatistics;
+import java.util.stream.Collectors;
 
 import java.util.*;
 
