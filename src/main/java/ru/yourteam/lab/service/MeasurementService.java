@@ -74,13 +74,7 @@ public class MeasurementService {
         result.put("max", stats.getMax());
         result.put("avg", stats.getAverage());
 
-        Map<String, Object> stats = new HashMap<>();
-        stats.put("count", measurements.size());
-        stats.put("min", min);
-        stats.put("max", max);
-        stats.put("avg", avg);
-
-        return stats;
+        return result;
     }
     public Map<Long, Measurement> getStorage() {
         return storage;
