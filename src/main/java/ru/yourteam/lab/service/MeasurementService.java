@@ -64,16 +64,9 @@ public class MeasurementService {
             throw new IllegalArgumentException("нет измерений " + param + " для sample=" + sampleId);
         }
 
-        double sum = 0;
-        double min = Double.MAX_VALUE;
-        double max = Double.MIN_VALUE;
-
-        for (Measurement m : measurements) {
-            double val = m.getValue();
-            sum += val;
-            if (val < min) min = val;
-            if (val > max) max = val;
-        }
+        DoubleSummaryStatistics stats = measurements.stream()
+                .mapToDouble(Measurement::getValue)
+                .summaryStatistics();
 
         double avg = sum / measurements.size();
 
