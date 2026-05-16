@@ -102,4 +102,7 @@ public class SampleService {
     public void setNextId(long nextId) {
         this.nextId = nextId;
     }
+    public long getNextId() {
+        return nextId;
+    }
 }
