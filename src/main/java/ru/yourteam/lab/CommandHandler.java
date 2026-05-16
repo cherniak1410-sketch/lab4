@@ -550,9 +550,16 @@ public class CommandHandler {
             List<Sample> samples = (List<Sample>) data.get("samples");
             if (samples != null) {
                 Map<Long, Sample> sampleStorage = sampleService.getStorage();
-                sampleStorage.clear();
-                long maxId = 0;
+
+                long maxId = sampleService.getNextId() - 1;
+
                 for (Sample s : samples) {
+                    // Если id уже занят, даём новый id
+                    if (sampleStorage.containsKey(s.getId())) {
+                        long newId = sampleService.getNextId();
+                        s.setId(newId);
+                        sampleService.setNextId(newId + 1);
+                    }
                     sampleStorage.put(s.getId(), s);
                     if (s.getId() > maxId) maxId = s.getId();
                 }
@@ -563,9 +570,16 @@ public class CommandHandler {
             List<Measurement> measurements = (List<Measurement>) data.get("measurements");
             if (measurements != null) {
                 Map<Long, Measurement> measurementStorage = measurementService.getStorage();
-                measurementStorage.clear();
-                long maxId = 0;
+
+                long maxId = measurementService.getNextId() - 1;
+
                 for (Measurement m : measurements) {
+                    // Если id уже занят, даём новый id
+                    if (measurementStorage.containsKey(m.getId())) {
+                        long newId = measurementService.getNextId();
+                        m.setId(newId);
+                        measurementService.setNextId(newId + 1);
+                    }
                     measurementStorage.put(m.getId(), m);
                     if (m.getId() > maxId) maxId = m.getId();
                 }
@@ -576,9 +590,16 @@ public class CommandHandler {
             List<Protocol> protocols = (List<Protocol>) data.get("protocols");
             if (protocols != null) {
                 Map<Long, Protocol> protocolStorage = protocolService.getStorage();
-                protocolStorage.clear();
-                long maxId = 0;
+
+                long maxId = protocolService.getNextId() - 1;
+
                 for (Protocol p : protocols) {
+                    // Если id уже занят, даём новый id
+                    if (protocolStorage.containsKey(p.getId())) {
+                        long newId = protocolService.getNextId();
+                        p.setId(newId);
+                        protocolService.setNextId(newId + 1);
+                    }
                     protocolStorage.put(p.getId(), p);
                     if (p.getId() > maxId) maxId = p.getId();
                 }
@@ -591,3 +612,4 @@ public class CommandHandler {
         }
     }
 }
+

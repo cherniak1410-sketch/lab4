@@ -31,7 +31,7 @@ public class FileStorage {
         objectMapper.writeValue(new File(filePath), data);
     }
 
-    // Загрузить все данные (пока заглушка, потом доделаем)
+    // Загрузить все данные
     public Map<String, Object> load(String filePath) throws IOException {
         File file = new File(filePath);
         if (!file.exists()) {
