@@ -546,7 +546,7 @@ public class CommandHandler {
         try {
             Map<String, Object> data = fileStorage.load(path);
 
-            // === Восстанавливаем образцы ===
+            // Восстанавливаем образцы
             List<Sample> samples = (List<Sample>) data.get("samples");
             if (samples != null) {
                 Map<Long, Sample> sampleStorage = sampleService.getStorage();
@@ -559,7 +559,7 @@ public class CommandHandler {
                 sampleService.setNextId(maxId + 1);
             }
 
-            // === Восстанавливаем измерения ===
+            //  Восстанавливаем измерения
             List<Measurement> measurements = (List<Measurement>) data.get("measurements");
             if (measurements != null) {
                 Map<Long, Measurement> measurementStorage = measurementService.getStorage();
@@ -572,7 +572,7 @@ public class CommandHandler {
                 measurementService.setNextId(maxId + 1);
             }
 
-            // === Восстанавливаем протоколы ===
+            // Восстанавливаем протоколы
             List<Protocol> protocols = (List<Protocol>) data.get("protocols");
             if (protocols != null) {
                 Map<Long, Protocol> protocolStorage = protocolService.getStorage();
