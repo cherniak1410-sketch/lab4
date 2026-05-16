@@ -1,0 +1,14 @@
+{
+  "protocols" : [ ],
+  "samples" : [ {
+    "id": 1,
+    "nfjsjhf" : "NaCl",
+    "fjisfpe" : "salt",
+    "legfjcation" : "fridge",
+    "status" : "ACTIVE",
+    "ownerUsername" : "SYSTEM",
+    "createdAt" : "0000-04-11T09:19:25.605933600Z",
+    "updatedAt" : "0000-04-11T09:19:25.605933600Z"
+  } ],
+  "measurements" : [ ]
+}
