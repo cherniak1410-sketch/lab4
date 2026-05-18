@@ -6,13 +6,18 @@ import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.stage.FileChooser;
-import javafx.stage.Stage;
+import ru.yourteam.lab.domain.Measurement;
+import ru.yourteam.lab.domain.Protocol;
+import ru.yourteam.lab.domain.Sample;
 import ru.yourteam.lab.service.MeasurementService;
 import ru.yourteam.lab.service.ProtocolService;
 import ru.yourteam.lab.service.SampleService;
 import ru.yourteam.lab.storage.FileStorage;
 
 import java.io.File;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class MainWindow {
 
@@ -47,9 +52,8 @@ public class MainWindow {
 
         TabPane tabPane = new TabPane(tabSamples, tabMeasurements, tabProtocols);
 
-        // Кнопки сохранения и загрузки
-        Button btnSave = new Button(" Сохранить");
-        Button btnLoad = new Button(" Загрузить");
+        Button btnSave = new Button("💾 Сохранить");
+        Button btnLoad = new Button("📂 Загрузить");
 
         btnSave.setOnAction(e -> handleSave());
         btnLoad.setOnAction(e -> handleLoad());
@@ -96,33 +100,61 @@ public class MainWindow {
             try {
                 var data = fileStorage.load(file.getAbsolutePath());
 
-                // Загружаем образцы
-                var samples = (java.util.List<ru.yourteam.lab.domain.Sample>) data.get("samples");
-                sampleService.getStorage().clear();
-                long maxSampleId = 1;
-                for (var s : samples) {
-                    sampleService.getStorage().put(s.getId(), s);
-                    if (s.getId() >= maxSampleId) maxSampleId = s.getId() + 1;
+                // Загружаем образцы с проверкой конфликтов ID
+                var samples = (List<Sample>) data.get("samples");
+                Map<Long, Sample> existingSamples = sampleService.getStorage();
+                long maxSampleId = getCurrentMaxSampleId(existingSamples.keySet());
+
+                for (Sample s : samples) {
+                    if (existingSamples.containsKey(s.getId())) {
+                        // Конфликт — присваиваем новый ID
+                        long newId = maxSampleId++;
+                        s.setId(newId);
+                        existingSamples.put(newId, s);
+                    } else {
+                        existingSamples.put(s.getId(), s);
+                        if (s.getId() >= maxSampleId) {
+                            maxSampleId = s.getId() + 1;
+                        }
+                    }
                 }
                 sampleService.setNextId(maxSampleId);
 
-                // Загружаем измерения
-                var measurements = (java.util.List<ru.yourteam.lab.domain.Measurement>) data.get("measurements");
-                measurementService.getStorage().clear();
-                long maxMeasId = 1;
-                for (var m : measurements) {
-                    measurementService.getStorage().put(m.getId(), m);
-                    if (m.getId() >= maxMeasId) maxMeasId = m.getId() + 1;
+                // Загружаем измерения с проверкой конфликтов ID
+                var measurements = (List<Measurement>) data.get("measurements");
+                Map<Long, Measurement> existingMeasurements = measurementService.getStorage();
+                long maxMeasId = getCurrentMaxMeasurementId(existingMeasurements.keySet());
+
+                for (Measurement m : measurements) {
+                    if (existingMeasurements.containsKey(m.getId())) {
+                        long newId = maxMeasId++;
+                        m.setId(newId);
+                        existingMeasurements.put(newId, m);
+                    } else {
+                        existingMeasurements.put(m.getId(), m);
+                        if (m.getId() >= maxMeasId) {
+                            maxMeasId = m.getId() + 1;
+                        }
+                    }
                 }
                 measurementService.setNextId(maxMeasId);
 
-                // Загружаем протоколы
-                var protocols = (java.util.List<ru.yourteam.lab.domain.Protocol>) data.get("protocols");
-                protocolService.getStorage().clear();
-                long maxProtId = 1;
-                for (var p : protocols) {
-                    protocolService.getStorage().put(p.getId(), p);
-                    if (p.getId() >= maxProtId) maxProtId = p.getId() + 1;
+                // Загружаем протоколы с проверкой конфликтов ID
+                var protocols = (List<Protocol>) data.get("protocols");
+                Map<Long, Protocol> existingProtocols = protocolService.getStorage();
+                long maxProtId = getCurrentMaxProtocolId(existingProtocols.keySet());
+
+                for (Protocol p : protocols) {
+                    if (existingProtocols.containsKey(p.getId())) {
+                        long newId = maxProtId++;
+                        p.setId(newId);
+                        existingProtocols.put(newId, p);
+                    } else {
+                        existingProtocols.put(p.getId(), p);
+                        if (p.getId() >= maxProtId) {
+                            maxProtId = p.getId() + 1;
+                        }
+                    }
                 }
                 protocolService.setNextId(maxProtId);
 
@@ -131,11 +163,35 @@ public class MainWindow {
                 measurementTab.refresh();
                 protocolTab.refresh();
 
-                showInfo("Загружено", "Данные загружены из:\n" + file.getAbsolutePath());
+                showInfo("Загружено", "Данные добавлены из:\n" + file.getAbsolutePath());
             } catch (Exception ex) {
                 showError("Ошибка загрузки", ex.getMessage());
             }
         }
+    }
+
+    private long getCurrentMaxSampleId(Iterable<Long> ids) {
+        long max = 1;
+        for (Long id : ids) {
+            if (id >= max) max = id + 1;
+        }
+        return max;
+    }
+
+    private long getCurrentMaxMeasurementId(Iterable<Long> ids) {
+        long max = 1;
+        for (Long id : ids) {
+            if (id >= max) max = id + 1;
+        }
+        return max;
+    }
+
+    private long getCurrentMaxProtocolId(Iterable<Long> ids) {
+        long max = 1;
+        for (Long id : ids) {
+            if (id >= max) max = id + 1;
+        }
+        return max;
     }
 
     private void showError(String title, String message) {
