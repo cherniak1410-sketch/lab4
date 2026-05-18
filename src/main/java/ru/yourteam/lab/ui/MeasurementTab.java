@@ -99,7 +99,7 @@ public class MeasurementTab {
 
     private HBox buildToolbar() {
         Button btnAdd = new Button("Добавить");
-        Button btnRefresh = new Button("🔄 Обновить");
+        Button btnRefresh = new Button(" Обновить");
 
         btnAdd.setOnAction(e -> handleAdd());
         btnRefresh.setOnAction(e -> refresh());

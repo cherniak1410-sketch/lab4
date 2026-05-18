@@ -153,14 +153,14 @@ public class ProtocolTab {
             String message;
             Alert.AlertType alertType;
             if (missing.isEmpty()) {
-                message = "✅ Протокол выполнен полностью для образца «" + sample.getName() + "».";
+                message = " Протокол выполнен полностью для образца «" + sample.getName() + "».";
                 alertType = Alert.AlertType.INFORMATION;
             } else {
                 String missingStr = missing.stream()
                         .map(MeasurementParam::name)
                         .sorted()
                         .collect(Collectors.joining(", "));
-                message = "❌ Не хватает измерений для образца «" + sample.getName() + "»:\n" + missingStr;
+                message = " Не хватает измерений для образца «" + sample.getName() + "»:\n" + missingStr;
                 alertType = Alert.AlertType.WARNING;
             }
 
