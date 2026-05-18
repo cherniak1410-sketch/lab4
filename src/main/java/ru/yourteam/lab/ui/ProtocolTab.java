@@ -49,9 +49,9 @@ public class ProtocolTab {
         BorderPane.setMargin(toolbar, new Insets(8));
     }
 
-    // ──────────────────────────────────────────────
+
     // Таблица
-    // ──────────────────────────────────────────────
+
 
     private TableView<Protocol> buildTable() {
         TableView<Protocol> table = new TableView<>();
@@ -84,14 +84,14 @@ public class ProtocolTab {
         return table;
     }
 
-    // ──────────────────────────────────────────────
+
     // Панель кнопок
-    // ──────────────────────────────────────────────
+
 
     private HBox buildToolbar() {
         Button btnCreate = new Button("Создать");
         Button btnApply = new Button("Проверить соответствие");
-        Button btnRefresh = new Button("🔄 Обновить");
+        Button btnRefresh = new Button(" Обновить");
 
         btnCreate.setOnAction(e -> handleCreate());
         btnApply.setOnAction(e -> handleApply());
@@ -102,9 +102,9 @@ public class ProtocolTab {
         return toolbar;
     }
 
-    // ──────────────────────────────────────────────
+
     // Обработчики
-    // ──────────────────────────────────────────────
+
 
     private void handleCreate() {
         ProtocolDialog dialog = new ProtocolDialog();

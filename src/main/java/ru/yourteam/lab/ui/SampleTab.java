@@ -42,9 +42,9 @@ public class SampleTab {
         BorderPane.setMargin(toolbar, new Insets(8));
     }
 
-    // ──────────────────────────────────────────────
+
     // Таблица
-    // ──────────────────────────────────────────────
+
 
     private TableView<Sample> buildTable() {
         TableView<Sample> table = new TableView<>();
@@ -88,15 +88,15 @@ public class SampleTab {
         return table;
     }
 
-    // ──────────────────────────────────────────────
+
     // Панель кнопок
-    // ──────────────────────────────────────────────
+
 
     private HBox buildToolbar() {
         Button btnAdd = new Button("Добавить");
         Button btnEdit = new Button("Редактировать");
         Button btnArchive = new Button("Архивировать");
-        Button btnRefresh = new Button("🔄 Обновить");
+        Button btnRefresh = new Button(" Обновить");
 
         btnAdd.setOnAction(e -> handleAdd());
         btnEdit.setOnAction(e -> handleEdit());
@@ -108,9 +108,9 @@ public class SampleTab {
         return toolbar;
     }
 
-    // ──────────────────────────────────────────────
+
     // Обработчики
-    // ──────────────────────────────────────────────
+
 
     private void handleAdd() {
         SampleDialog dialog = new SampleDialog(null);

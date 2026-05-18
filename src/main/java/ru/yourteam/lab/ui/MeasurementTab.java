@@ -46,9 +46,9 @@ public class MeasurementTab {
         BorderPane.setMargin(toolbar, new Insets(8));
     }
 
-    // ──────────────────────────────────────────────
+
     // Таблица
-    // ──────────────────────────────────────────────
+
 
     private TableView<Measurement> buildTable() {
         TableView<Measurement> table = new TableView<>();
@@ -93,9 +93,9 @@ public class MeasurementTab {
         return table;
     }
 
-    // ──────────────────────────────────────────────
+
     // Панель кнопок
-    // ──────────────────────────────────────────────
+
 
     private HBox buildToolbar() {
         Button btnAdd = new Button("Добавить");
@@ -109,9 +109,9 @@ public class MeasurementTab {
         return toolbar;
     }
 
-    // ──────────────────────────────────────────────
+
     // Обработчики
-    // ──────────────────────────────────────────────
+
 
     private void handleAdd() {
         List<Sample> samples = sampleService.getAll();

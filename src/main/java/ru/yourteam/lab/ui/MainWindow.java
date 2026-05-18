@@ -52,8 +52,8 @@ public class MainWindow {
 
         TabPane tabPane = new TabPane(tabSamples, tabMeasurements, tabProtocols);
 
-        Button btnSave = new Button("💾 Сохранить");
-        Button btnLoad = new Button("📂 Загрузить");
+        Button btnSave = new Button(" Сохранить");
+        Button btnLoad = new Button("Загрузить");
 
         btnSave.setOnAction(e -> handleSave());
         btnLoad.setOnAction(e -> handleLoad());
