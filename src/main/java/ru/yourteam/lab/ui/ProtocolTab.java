@@ -175,6 +175,7 @@ public class ProtocolTab {
     public void refresh() {
         List<Protocol> protocols = protocolService.getAll();
         tableView.setItems(FXCollections.observableArrayList(protocols));
+        tableView.refresh();
     }
 
     private void showError(String title, String message) {

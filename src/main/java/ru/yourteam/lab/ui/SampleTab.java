@@ -175,6 +175,7 @@ public class SampleTab {
     public void refresh() {
         List<Sample> samples = sampleService.getAll();
         tableView.setItems(FXCollections.observableArrayList(samples));
+        tableView.refresh();
     }
 
     private void showError(String title, String message) {

@@ -155,6 +155,7 @@ public class MeasurementTab {
                 .flatMap(s -> measurementService.getBySampleId(s.getId()).stream())
                 .toList();
         tableView.setItems(FXCollections.observableArrayList(allMeasurements));
+        tableView.refresh();
     }
 
     private void showError(String title, String message) {
