@@ -7,6 +7,7 @@ import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import ru.yourteam.lab.auth.AuthService;
 import ru.yourteam.lab.domain.Measurement;
 import ru.yourteam.lab.domain.Sample;
 import ru.yourteam.lab.service.MeasurementService;
@@ -19,8 +20,9 @@ import java.util.Optional;
 
 /**
  * Вкладка "Измерения".
- * Показывает все измерения (или фильтрует по образцу).
- * Кнопки: Добавить, Обновить.
+ *
+ * Этап 5: кнопка "Добавить" активна только для авторизованных пользователей.
+ * Добавлена колонка "Кто добавил".
  */
 public class MeasurementTab {
 
@@ -29,13 +31,17 @@ public class MeasurementTab {
 
     private final MeasurementService measurementService;
     private final SampleService sampleService;
+    private final AuthService authService;
 
     private final BorderPane root;
     private final TableView<Measurement> tableView;
 
-    public MeasurementTab(MeasurementService measurementService, SampleService sampleService) {
+    public MeasurementTab(MeasurementService measurementService,
+                          SampleService sampleService,
+                          AuthService authService) {
         this.measurementService = measurementService;
-        this.sampleService = sampleService;
+        this.sampleService      = sampleService;
+        this.authService        = authService;
 
         tableView = buildTable();
         HBox toolbar = buildToolbar();
@@ -46,60 +52,46 @@ public class MeasurementTab {
         BorderPane.setMargin(toolbar, new Insets(8));
     }
 
-
-    // Таблица
-
-
     private TableView<Measurement> buildTable() {
         TableView<Measurement> table = new TableView<>();
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         table.setPlaceholder(new Label("Нет измерений. Нажмите «Добавить»."));
 
         TableColumn<Measurement, String> colId = new TableColumn<>("ID");
-        colId.setCellValueFactory(cell ->
-                new SimpleStringProperty(String.valueOf(cell.getValue().getId())));
-        colId.setPrefWidth(50);
+        colId.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getId())));
+        colId.setPrefWidth(45);
 
         TableColumn<Measurement, String> colSampleId = new TableColumn<>("Образец ID");
-        colSampleId.setCellValueFactory(cell ->
-                new SimpleStringProperty(String.valueOf(cell.getValue().getSampleId())));
-        colSampleId.setPrefWidth(90);
+        colSampleId.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getSampleId())));
+        colSampleId.setPrefWidth(80);
 
         TableColumn<Measurement, String> colParam = new TableColumn<>("Параметр");
-        colParam.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getParam().name()));
+        colParam.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getParam().name()));
 
         TableColumn<Measurement, String> colValue = new TableColumn<>("Значение");
-        colValue.setCellValueFactory(cell ->
-                new SimpleStringProperty(String.valueOf(cell.getValue().getValue())));
+        colValue.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getValue())));
 
         TableColumn<Measurement, String> colUnit = new TableColumn<>("Единицы");
-        colUnit.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getUnit()));
+        colUnit.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getUnit()));
 
         TableColumn<Measurement, String> colMethod = new TableColumn<>("Метод");
-        colMethod.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getMethod()));
+        colMethod.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getMethod()));
 
         TableColumn<Measurement, String> colTime = new TableColumn<>("Время");
-        colTime.setCellValueFactory(cell ->
-                new SimpleStringProperty(FORMATTER.format(cell.getValue().getMeasuredAt())));
+        colTime.setCellValueFactory(c -> new SimpleStringProperty(FORMATTER.format(c.getValue().getMeasuredAt())));
 
+        // Колонка владельца (этап 5)
         TableColumn<Measurement, String> colOwner = new TableColumn<>("Кто добавил");
-        colOwner.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getOwnerUsername()));
+        colOwner.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getOwnerUsername()));
+        colOwner.setPrefWidth(100);
 
         table.getColumns().addAll(colId, colSampleId, colParam, colValue, colUnit, colMethod, colTime, colOwner);
         return table;
     }
 
-
-    // Панель кнопок
-
-
     private HBox buildToolbar() {
-        Button btnAdd = new Button("Добавить");
-        Button btnRefresh = new Button(" Обновить");
+        Button btnAdd     = new Button("Добавить");
+        Button btnRefresh = new Button("🔄 Обновить");
 
         btnAdd.setOnAction(e -> handleAdd());
         btnRefresh.setOnAction(e -> refresh());
@@ -109,11 +101,11 @@ public class MeasurementTab {
         return toolbar;
     }
 
-
-    // Обработчики
-
-
     private void handleAdd() {
+        if (!authService.isLoggedIn()) {
+            showError("Требуется авторизация", "Войдите в систему, чтобы добавлять измерения.");
+            return;
+        }
         List<Sample> samples = sampleService.getAll();
         if (samples.isEmpty()) {
             showError("Нет образцов", "Сначала добавьте хотя бы один образец на вкладке «Образцы».");
@@ -133,23 +125,16 @@ public class MeasurementTab {
                     return;
                 }
 
-                measurementService.add(
-                        data.sampleId(),
-                        data.param(),
-                        data.value(),
-                        data.unit(),
-                        data.method()
-                );
+                measurementService.add(data.sampleId(), data.param(),
+                        data.value(), data.unit(), data.method());
                 refresh();
-            } catch (IllegalArgumentException ex) {
+            } catch (Exception ex) {
                 showError("Ошибка при добавлении", ex.getMessage());
             }
         });
     }
 
-    /** Перечитывает данные из сервиса и перерисовывает таблицу. */
     public void refresh() {
-        // Собираем все измерения из всех образцов
         List<Sample> allSamples = sampleService.getAll();
         List<Measurement> allMeasurements = allSamples.stream()
                 .flatMap(s -> measurementService.getBySampleId(s.getId()).stream())
@@ -165,8 +150,5 @@ public class MeasurementTab {
         alert.showAndWait();
     }
 
-    public Parent getRoot() {
-        return root;
-    }
+    public Parent getRoot() { return root; }
 }
-

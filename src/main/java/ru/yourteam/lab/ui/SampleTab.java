@@ -7,8 +7,8 @@ import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import ru.yourteam.lab.auth.AuthService;
 import ru.yourteam.lab.domain.Sample;
-import ru.yourteam.lab.domain.SampleStatus;
 import ru.yourteam.lab.service.MeasurementService;
 import ru.yourteam.lab.service.SampleService;
 
@@ -17,34 +17,52 @@ import java.util.Optional;
 
 /**
  * Вкладка "Образцы".
- * Показывает TableView со всеми образцами.
- * Кнопки: Добавить, Редактировать, Архивировать, Обновить.
+ *
+ * Этап 5:
+ *  - Добавлена колонка "Владелец".
+ *  - Кнопки "Редактировать" и "Архивировать" активны только если:
+ *      * пользователь авторизован, И
+ *      * объект принадлежит текущему пользователю ИЛИ его владелец "SYSTEM".
  */
 public class SampleTab {
 
     private final SampleService sampleService;
     private final MeasurementService measurementService;
+    private final AuthService authService;
 
     private final BorderPane root;
     private final TableView<Sample> tableView;
+    private final Button btnEdit;
+    private final Button btnArchive;
 
-    public SampleTab(SampleService sampleService, MeasurementService measurementService) {
-        this.sampleService = sampleService;
+    public SampleTab(SampleService sampleService,
+                     MeasurementService measurementService,
+                     AuthService authService) {
+        this.sampleService      = sampleService;
         this.measurementService = measurementService;
+        this.authService        = authService;
+
+        btnEdit    = new Button("Редактировать");
+        btnArchive = new Button("Архивировать");
 
         tableView = buildTable();
-
         HBox toolbar = buildToolbar();
 
         root = new BorderPane();
         root.setTop(toolbar);
         root.setCenter(tableView);
         BorderPane.setMargin(toolbar, new Insets(8));
+
+        // При смене выбора обновляем доступность кнопок
+        tableView.getSelectionModel().selectedItemProperty().addListener(
+                (obs, old, selected) -> updateButtonState(selected)
+        );
+        updateButtonState(null);
     }
 
-
+    // -------------------------------------------------------------------------
     // Таблица
-
+    // -------------------------------------------------------------------------
 
     private TableView<Sample> buildTable() {
         TableView<Sample> table = new TableView<>();
@@ -52,51 +70,45 @@ public class SampleTab {
         table.setPlaceholder(new Label("Нет образцов. Нажмите «Добавить»."));
 
         TableColumn<Sample, String> colId = new TableColumn<>("ID");
-        colId.setCellValueFactory(cell ->
-                new SimpleStringProperty(String.valueOf(cell.getValue().getId())));
-        colId.setPrefWidth(50);
+        colId.setCellValueFactory(c -> new SimpleStringProperty(String.valueOf(c.getValue().getId())));
+        colId.setPrefWidth(45);
 
         TableColumn<Sample, String> colName = new TableColumn<>("Название");
-        colName.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getName()));
+        colName.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getName()));
 
         TableColumn<Sample, String> colType = new TableColumn<>("Тип");
-        colType.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getType()));
+        colType.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getType()));
 
         TableColumn<Sample, String> colLocation = new TableColumn<>("Место");
-        colLocation.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getLocation()));
+        colLocation.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getLocation()));
 
         TableColumn<Sample, String> colStatus = new TableColumn<>("Статус");
-        colStatus.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getStatus().name()));
-        colStatus.setPrefWidth(90);
+        colStatus.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getStatus().name()));
+        colStatus.setPrefWidth(80);
 
+        // Колонка владельца (этап 5)
         TableColumn<Sample, String> colOwner = new TableColumn<>("Владелец");
-        colOwner.setCellValueFactory(cell ->
-                new SimpleStringProperty(cell.getValue().getOwnerUsername()));
+        colOwner.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getOwnerUsername()));
+        colOwner.setPrefWidth(100);
 
         TableColumn<Sample, String> colMeasurements = new TableColumn<>("Измерений");
-        colMeasurements.setCellValueFactory(cell -> {
-            int count = measurementService.getBySampleId(cell.getValue().getId()).size();
+        colMeasurements.setCellValueFactory(c -> {
+            int count = measurementService.getBySampleId(c.getValue().getId()).size();
             return new SimpleStringProperty(String.valueOf(count));
         });
-        colMeasurements.setPrefWidth(90);
+        colMeasurements.setPrefWidth(80);
 
         table.getColumns().addAll(colId, colName, colType, colLocation, colStatus, colOwner, colMeasurements);
         return table;
     }
 
-
+    // -------------------------------------------------------------------------
     // Панель кнопок
-
+    // -------------------------------------------------------------------------
 
     private HBox buildToolbar() {
-        Button btnAdd = new Button("Добавить");
-        Button btnEdit = new Button("Редактировать");
-        Button btnArchive = new Button("Архивировать");
-        Button btnRefresh = new Button(" Обновить");
+        Button btnAdd     = new Button("Добавить");
+        Button btnRefresh = new Button("🔄 Обновить");
 
         btnAdd.setOnAction(e -> handleAdd());
         btnEdit.setOnAction(e -> handleEdit());
@@ -108,19 +120,53 @@ public class SampleTab {
         return toolbar;
     }
 
+    // -------------------------------------------------------------------------
+    // Управление доступностью кнопок
+    // -------------------------------------------------------------------------
 
+    /**
+     * Кнопки Edit и Archive активны только если:
+     *  - пользователь авторизован
+     *  - выбран объект
+     *  - текущий пользователь является владельцем ИЛИ владелец "SYSTEM"
+     */
+    private void updateButtonState(Sample selected) {
+        if (!authService.isLoggedIn() || selected == null) {
+            btnEdit.setDisable(true);
+            btnArchive.setDisable(true);
+            return;
+        }
+
+        boolean canEdit = canModify(selected.getOwnerUsername());
+        btnEdit.setDisable(!canEdit);
+        btnArchive.setDisable(!canEdit);
+    }
+
+    /**
+     * Проверяет право на изменение по той же логике, что AuthService.requireOwnership().
+     */
+    private boolean canModify(String ownerUsername) {
+        if (!authService.isLoggedIn()) return false;
+        if ("SYSTEM".equals(ownerUsername)) return true;
+        return authService.getCurrentUsername().equals(ownerUsername);
+    }
+
+    // -------------------------------------------------------------------------
     // Обработчики
-
+    // -------------------------------------------------------------------------
 
     private void handleAdd() {
+        if (!authService.isLoggedIn()) {
+            showError("Требуется авторизация", "Войдите в систему, чтобы добавлять образцы.");
+            return;
+        }
         SampleDialog dialog = new SampleDialog(null);
         Optional<SampleDialog.SampleFormData> result = dialog.showAndWait();
         result.ifPresent(data -> {
             try {
-                Sample sample = sampleService.add(data.name(), data.type(), data.location());
-                // Устанавливаем владельца если нужно (по умолчанию SYSTEM)
+                sampleService.add(data.name(), data.type(), data.location());
                 refresh();
-            } catch (IllegalArgumentException ex) {
+            } catch (Exception ex) {
                 showError("Ошибка при добавлении", ex.getMessage());
             }
         });
@@ -132,16 +178,15 @@ public class SampleTab {
             showError("Ничего не выбрано", "Выберите образец в таблице.");
             return;
         }
-
         SampleDialog dialog = new SampleDialog(selected);
         Optional<SampleDialog.SampleFormData> result = dialog.showAndWait();
         result.ifPresent(data -> {
             try {
-                sampleService.update(selected.getId(), "name", data.name());
-                sampleService.update(selected.getId(), "type", data.type());
+                sampleService.update(selected.getId(), "name",     data.name());
+                sampleService.update(selected.getId(), "type",     data.type());
                 sampleService.update(selected.getId(), "location", data.location());
                 refresh();
-            } catch (IllegalArgumentException ex) {
+            } catch (Exception ex) {
                 showError("Ошибка при редактировании", ex.getMessage());
             }
         });
@@ -153,7 +198,6 @@ public class SampleTab {
             showError("Ничего не выбрано", "Выберите образец в таблице.");
             return;
         }
-
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
                 "Архивировать образец «" + selected.getName() + "»?",
                 ButtonType.OK, ButtonType.CANCEL);
@@ -164,18 +208,19 @@ public class SampleTab {
                 try {
                     sampleService.archive(selected.getId());
                     refresh();
-                } catch (IllegalArgumentException ex) {
+                } catch (Exception ex) {
                     showError("Ошибка", ex.getMessage());
                 }
             }
         });
     }
 
-    /** Перечитывает данные из сервиса и перерисовывает таблицу. */
     public void refresh() {
         List<Sample> samples = sampleService.getAll();
         tableView.setItems(FXCollections.observableArrayList(samples));
         tableView.refresh();
+        // После обновления перепроверяем состояние кнопок
+        updateButtonState(tableView.getSelectionModel().getSelectedItem());
     }
 
     private void showError(String title, String message) {
@@ -185,7 +230,5 @@ public class SampleTab {
         alert.showAndWait();
     }
 
-    public Parent getRoot() {
-        return root;
-    }
+    public Parent getRoot() { return root; }
 }

@@ -3,9 +3,9 @@ package ru.yourteam.lab.ui;
 import javafx.geometry.Insets;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
+import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
+import ru.yourteam.lab.auth.AuthService;
 import ru.yourteam.lab.domain.Measurement;
 import ru.yourteam.lab.domain.Protocol;
 import ru.yourteam.lab.domain.Sample;
@@ -13,9 +13,10 @@ import ru.yourteam.lab.service.MeasurementService;
 import ru.yourteam.lab.service.ProtocolService;
 import ru.yourteam.lab.service.SampleService;
 import ru.yourteam.lab.storage.FileStorage;
+import ru.yourteam.lab.storage.UserStorage;
 
 import java.io.File;
-import java.util.HashMap;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -28,60 +29,76 @@ public class MainWindow {
     private final SampleService sampleService;
     private final MeasurementService measurementService;
     private final ProtocolService protocolService;
+    private final AuthService authService;
+    private final UserStorage userStorage;
     private final FileStorage fileStorage = new FileStorage();
 
     public MainWindow(SampleService sampleService,
                       MeasurementService measurementService,
-                      ProtocolService protocolService) {
-        this.sampleService = sampleService;
+                      ProtocolService protocolService,
+                      AuthService authService,
+                      UserStorage userStorage) {
+        this.sampleService      = sampleService;
         this.measurementService = measurementService;
-        this.protocolService = protocolService;
+        this.protocolService    = protocolService;
+        this.authService        = authService;
+        this.userStorage        = userStorage;
 
-        sampleTab = new SampleTab(sampleService, measurementService);
-        measurementTab = new MeasurementTab(measurementService, sampleService);
-        protocolTab = new ProtocolTab(protocolService, measurementService, sampleService);
+        // Вкладки получают AuthService для управления правами на кнопки
+        sampleTab      = new SampleTab(sampleService, measurementService, authService);
+        measurementTab = new MeasurementTab(measurementService, sampleService, authService);
+        protocolTab    = new ProtocolTab(protocolService, measurementService, sampleService, authService);
 
-        Tab tabSamples = new Tab("Образцы", sampleTab.getRoot());
+        Tab tabSamples      = new Tab("Образцы",    sampleTab.getRoot());
+        Tab tabMeasurements = new Tab("Измерения",  measurementTab.getRoot());
+        Tab tabProtocols    = new Tab("Протоколы",  protocolTab.getRoot());
+
         tabSamples.setClosable(false);
-
-        Tab tabMeasurements = new Tab("Измерения", measurementTab.getRoot());
         tabMeasurements.setClosable(false);
-
-        Tab tabProtocols = new Tab("Протоколы", protocolTab.getRoot());
         tabProtocols.setClosable(false);
 
         TabPane tabPane = new TabPane(tabSamples, tabMeasurements, tabProtocols);
 
-        Button btnSave = new Button(" Сохранить");
-        Button btnLoad = new Button("Загрузить");
+        // --- Верхняя панель ---
+        Button btnSave = new Button("💾 Сохранить");
+        Button btnLoad = new Button("📂 Загрузить");
+
+        // Метка с текущим пользователем
+        Label userLabel = new Label("👤 " + authService.getCurrentUsername());
+        userLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
 
         btnSave.setOnAction(e -> handleSave());
         btnLoad.setOnAction(e -> handleLoad());
 
-        HBox topBar = new HBox(8, btnSave, btnLoad);
-        topBar.setPadding(new Insets(6, 8, 6, 8));
+        HBox topBar = new HBox(8, btnSave, btnLoad, spacer, userLabel);
+        topBar.setPadding(new Insets(6, 10, 6, 8));
+        topBar.setStyle("-fx-background-color: #f0f0f0; -fx-border-color: #ccc; -fx-border-width: 0 0 1 0;");
 
         root = new BorderPane();
         root.setTop(topBar);
         root.setCenter(tabPane);
     }
 
-    private void handleSave() {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Сохранить данные");
-        fileChooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("JSON файлы", "*.json"));
-        fileChooser.setInitialFileName("lab_data.json");
+    // -------------------------------------------------------------------------
+    // Сохранение / Загрузка
+    // -------------------------------------------------------------------------
 
-        File file = fileChooser.showSaveDialog(root.getScene().getWindow());
+    private void handleSave() {
+        FileChooser fc = new FileChooser();
+        fc.setTitle("Сохранить данные");
+        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("JSON файлы", "*.json"));
+        fc.setInitialFileName("lab_data.json");
+
+        File file = fc.showSaveDialog(root.getScene().getWindow());
         if (file != null) {
             try {
-                fileStorage.save(
-                        file.getAbsolutePath(),
+                fileStorage.save(file.getAbsolutePath(),
                         sampleService.getStorage(),
                         measurementService.getStorage(),
-                        protocolService.getStorage()
-                );
+                        protocolService.getStorage());
                 showInfo("Сохранено", "Данные сохранены в:\n" + file.getAbsolutePath());
             } catch (Exception ex) {
                 showError("Ошибка сохранения", ex.getMessage());
@@ -90,109 +107,95 @@ public class MainWindow {
     }
 
     private void handleLoad() {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Загрузить данные");
-        fileChooser.getExtensionFilters().add(
-                new FileChooser.ExtensionFilter("JSON файлы", "*.json"));
+        FileChooser fc = new FileChooser();
+        fc.setTitle("Загрузить данные");
+        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("JSON файлы", "*.json"));
 
-        File file = fileChooser.showOpenDialog(root.getScene().getWindow());
-        if (file != null) {
-            try {
-                var data = fileStorage.load(file.getAbsolutePath());
+        File file = fc.showOpenDialog(root.getScene().getWindow());
+        if (file == null) return;
 
-                // Загружаем образцы с проверкой конфликтов ID
-                var samples = (List<Sample>) data.get("samples");
-                Map<Long, Sample> existingSamples = sampleService.getStorage();
-                long maxSampleId = getCurrentMaxSampleId(existingSamples.keySet());
+        try {
+            var data = fileStorage.load(file.getAbsolutePath());
 
-                for (Sample s : samples) {
-                    if (existingSamples.containsKey(s.getId())) {
-                        // Конфликт — присваиваем новый ID
-                        long newId = maxSampleId++;
-                        s.setId(newId);
-                        existingSamples.put(newId, s);
-                    } else {
-                        existingSamples.put(s.getId(), s);
-                        if (s.getId() >= maxSampleId) {
-                            maxSampleId = s.getId() + 1;
-                        }
-                    }
-                }
-                sampleService.setNextId(maxSampleId);
+            mergeIntoStorage(
+                    (List<Sample>) data.get("samples"),
+                    sampleService.getStorage(),
+                    sampleService);
 
-                // Загружаем измерения с проверкой конфликтов ID
-                var measurements = (List<Measurement>) data.get("measurements");
-                Map<Long, Measurement> existingMeasurements = measurementService.getStorage();
-                long maxMeasId = getCurrentMaxMeasurementId(existingMeasurements.keySet());
+            mergeIntoStorageMeas(
+                    (List<Measurement>) data.get("measurements"),
+                    measurementService.getStorage(),
+                    measurementService);
 
-                for (Measurement m : measurements) {
-                    if (existingMeasurements.containsKey(m.getId())) {
-                        long newId = maxMeasId++;
-                        m.setId(newId);
-                        existingMeasurements.put(newId, m);
-                    } else {
-                        existingMeasurements.put(m.getId(), m);
-                        if (m.getId() >= maxMeasId) {
-                            maxMeasId = m.getId() + 1;
-                        }
-                    }
-                }
-                measurementService.setNextId(maxMeasId);
+            mergeIntoStorageProt(
+                    (List<Protocol>) data.get("protocols"),
+                    protocolService.getStorage(),
+                    protocolService);
 
-                // Загружаем протоколы с проверкой конфликтов ID
-                var protocols = (List<Protocol>) data.get("protocols");
-                Map<Long, Protocol> existingProtocols = protocolService.getStorage();
-                long maxProtId = getCurrentMaxProtocolId(existingProtocols.keySet());
+            sampleTab.refresh();
+            measurementTab.refresh();
+            protocolTab.refresh();
 
-                for (Protocol p : protocols) {
-                    if (existingProtocols.containsKey(p.getId())) {
-                        long newId = maxProtId++;
-                        p.setId(newId);
-                        existingProtocols.put(newId, p);
-                    } else {
-                        existingProtocols.put(p.getId(), p);
-                        if (p.getId() >= maxProtId) {
-                            maxProtId = p.getId() + 1;
-                        }
-                    }
-                }
-                protocolService.setNextId(maxProtId);
+            showInfo("Загружено", "Данные добавлены из:\n" + file.getAbsolutePath());
+        } catch (Exception ex) {
+            showError("Ошибка загрузки", ex.getMessage());
+        }
+    }
 
-                // Обновляем все таблицы
-                sampleTab.refresh();
-                measurementTab.refresh();
-                protocolTab.refresh();
-
-                showInfo("Загружено", "Данные добавлены из:\n" + file.getAbsolutePath());
-            } catch (Exception ex) {
-                showError("Ошибка загрузки", ex.getMessage());
+    private void mergeIntoStorage(List<Sample> list,
+                                  Map<Long, Sample> store,
+                                  SampleService service) {
+        if (list == null) return;
+        long maxId = service.getNextId() - 1;
+        for (Sample s : list) {
+            if (store.containsKey(s.getId())) {
+                long newId = service.getNextId();
+                s.setId(newId);
+                service.setNextId(newId + 1);
             }
+            store.put(s.getId(), s);
+            if (s.getId() > maxId) maxId = s.getId();
         }
+        service.setNextId(maxId + 1);
     }
 
-    private long getCurrentMaxSampleId(Iterable<Long> ids) {
-        long max = 1;
-        for (Long id : ids) {
-            if (id >= max) max = id + 1;
+    private void mergeIntoStorageMeas(List<Measurement> list,
+                                      Map<Long, Measurement> store,
+                                      MeasurementService service) {
+        if (list == null) return;
+        long maxId = service.getNextId() - 1;
+        for (Measurement m : list) {
+            if (store.containsKey(m.getId())) {
+                long newId = service.getNextId();
+                m.setId(newId);
+                service.setNextId(newId + 1);
+            }
+            store.put(m.getId(), m);
+            if (m.getId() > maxId) maxId = m.getId();
         }
-        return max;
+        service.setNextId(maxId + 1);
     }
 
-    private long getCurrentMaxMeasurementId(Iterable<Long> ids) {
-        long max = 1;
-        for (Long id : ids) {
-            if (id >= max) max = id + 1;
+    private void mergeIntoStorageProt(List<Protocol> list,
+                                      Map<Long, Protocol> store,
+                                      ProtocolService service) {
+        if (list == null) return;
+        long maxId = service.getNextId() - 1;
+        for (Protocol p : list) {
+            if (store.containsKey(p.getId())) {
+                long newId = service.getNextId();
+                p.setId(newId);
+                service.setNextId(newId + 1);
+            }
+            store.put(p.getId(), p);
+            if (p.getId() > maxId) maxId = p.getId();
         }
-        return max;
+        service.setNextId(maxId + 1);
     }
 
-    private long getCurrentMaxProtocolId(Iterable<Long> ids) {
-        long max = 1;
-        for (Long id : ids) {
-            if (id >= max) max = id + 1;
-        }
-        return max;
-    }
+    // -------------------------------------------------------------------------
+    // Вспомогательные диалоги
+    // -------------------------------------------------------------------------
 
     private void showError(String title, String message) {
         Alert alert = new Alert(Alert.AlertType.ERROR, message, ButtonType.OK);
@@ -208,7 +211,5 @@ public class MainWindow {
         alert.showAndWait();
     }
 
-    public Parent getRoot() {
-        return root;
-    }
+    public Parent getRoot() { return root; }
 }

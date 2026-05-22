@@ -1,29 +1,52 @@
 package ru.yourteam.lab.service;
 
+import ru.yourteam.lab.auth.AuthService;
 import ru.yourteam.lab.domain.Sample;
 import ru.yourteam.lab.domain.SampleStatus;
 import ru.yourteam.lab.validator.SampleValidator;
 
 import java.util.*;
 
+/**
+ * Сервис управления образцами.
+ *
+ * Этап 5: при создании объекта владелец берётся из AuthService (текущий пользователь).
+ * Изменение и архивирование требуют авторизации и прав на объект.
+ * SYSTEM-объекты может редактировать любой авторизованный пользователь.
+ */
 public class SampleService {
+
     private final Map<Long, Sample> storage = new LinkedHashMap<>();
     private long nextId = 1;
+    private final AuthService authService;
+
+    public SampleService(AuthService authService) {
+        this.authService = authService;
+    }
+
+    // -------------------------------------------------------------------------
+    // Создание
+    // -------------------------------------------------------------------------
 
     public Sample add(String name, String type, String location) {
-        // Валидация
+        authService.requireLogin();
+
         SampleValidator.validateName(name);
         SampleValidator.validateType(type);
         SampleValidator.validateLocation(location);
 
-        // Создание
         Sample sample = new Sample(name, type, location);
         sample.setId(nextId++);
+        // Владелец = текущий авторизованный пользователь
+        sample.setOwnerUsername(authService.getCurrentUsername());
 
-        // Сохранение
         storage.put(sample.getId(), sample);
         return sample;
     }
+
+    // -------------------------------------------------------------------------
+    // Чтение (доступно всем)
+    // -------------------------------------------------------------------------
 
     public Optional<Sample> findById(long id) {
         return Optional.ofNullable(storage.get(id));
@@ -41,8 +64,29 @@ public class SampleService {
         return new ArrayList<>(storage.values());
     }
 
+    public List<Sample> filterByStatus(SampleStatus status) {
+        List<Sample> result = new ArrayList<>();
+        for (Sample s : storage.values()) {
+            if (s.getStatus() == status) result.add(s);
+        }
+        return result;
+    }
+
+    public List<Sample> filterByOwner(String username) {
+        List<Sample> result = new ArrayList<>();
+        for (Sample s : storage.values()) {
+            if (s.getOwnerUsername().equals(username)) result.add(s);
+        }
+        return result;
+    }
+
+    // -------------------------------------------------------------------------
+    // Изменение
+    // -------------------------------------------------------------------------
+
     public Sample update(long id, String field, String value) {
         Sample sample = getById(id);
+        authService.requireOwnership(sample.getOwnerUsername(), "Sample#" + id);
 
         switch (field) {
             case "name":
@@ -64,12 +108,13 @@ public class SampleService {
             default:
                 throw new IllegalArgumentException("нельзя менять поле '" + field + "'");
         }
-
         return sample;
     }
 
     public Sample archive(long id) {
         Sample sample = getById(id);
+        authService.requireOwnership(sample.getOwnerUsername(), "Sample#" + id);
+
         if (sample.getStatus() == SampleStatus.ARCHIVED) {
             throw new IllegalArgumentException("образец уже ARCHIVED");
         }
@@ -77,32 +122,13 @@ public class SampleService {
         return sample;
     }
 
-    public List<Sample> filterByStatus(SampleStatus status) {
-        List<Sample> result = new ArrayList<>();
-        for (Sample s : storage.values()) {
-            if (s.getStatus() == status) {
-                result.add(s);
-            }
-        }
-        return result;
-    }
+    // -------------------------------------------------------------------------
+    // Внутренний доступ (для загрузки файлов)
+    // -------------------------------------------------------------------------
 
-    public List<Sample> filterByOwner(String username) {
-        List<Sample> result = new ArrayList<>();
-        for (Sample s : storage.values()) {
-            if (s.getOwnerUsername().equals(username)) {
-                result.add(s);
-            }
-        }
-        return result;
-    }
-    public Map<Long, Sample> getStorage() {
-        return storage;
-    }
-    public void setNextId(long nextId) {
-        this.nextId = nextId;
-    }
-    public long getNextId() {
-        return nextId;
-    }
+    public Map<Long, Sample> getStorage() { return storage; }
+
+    public void setNextId(long nextId) { this.nextId = nextId; }
+
+    public long getNextId() { return nextId; }
 }
