@@ -85,13 +85,15 @@ public class ProtocolTab {
     private HBox buildToolbar() {
         Button btnCreate  = new Button("Создать");
         Button btnApply   = new Button("Проверить соответствие");
-        Button btnRefresh = new Button("🔄 Обновить");
+        Button btnRefresh = new Button(" Обновить");
+        Button btnDelete = new Button("Удалить");
 
         btnCreate.setOnAction(e -> handleCreate());
         btnApply.setOnAction(e -> handleApply());
+        btnDelete.setOnAction(e -> handleDelete());
         btnRefresh.setOnAction(e -> refresh());
 
-        HBox toolbar = new HBox(8, btnCreate, btnApply, new Separator(), btnRefresh);
+        HBox toolbar = new HBox(8, btnCreate, btnApply, btnDelete,new Separator(), btnRefresh);
         toolbar.setPadding(new Insets(4));
         return toolbar;
     }
@@ -140,7 +142,7 @@ public class ProtocolTab {
             String message;
             Alert.AlertType type;
             if (missing.isEmpty()) {
-                message = "✅ Протокол выполнен полностью для образца «" + sample.getName() + "».";
+                message = " Протокол выполнен полностью для образца «" + sample.getName() + "».";
                 type = Alert.AlertType.INFORMATION;
             } else {
                 String missingStr = missing.stream().map(MeasurementParam::name)
@@ -170,4 +172,26 @@ public class ProtocolTab {
     }
 
     public Parent getRoot() { return root; }
+    private void handleDelete() {
+        Protocol selected = tableView.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            showError("Ничего не выбрано", "Выберите протокол в таблице.");
+            return;
+        }
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Удалить протокол «" + selected.getName() + "»?",
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setTitle("Подтверждение удаления");
+        confirm.setHeaderText(null);
+        confirm.showAndWait().ifPresent(btn -> {
+            if (btn == ButtonType.OK) {
+                try {
+                    protocolService.delete(selected.getId());
+                    refresh();
+                } catch (IllegalArgumentException ex) {
+                    showError("Ошибка при удалении", ex.getMessage());
+                }
+            }
+        });
+    }
 }

@@ -77,4 +77,10 @@ public class ProtocolService {
     public void setNextId(long nextId) { this.nextId = nextId; }
 
     public long getNextId() { return nextId; }
+    public void delete(long id) {
+        if (!storage.containsKey(id)) {
+            throw new IllegalArgumentException("Протокол с id=" + id + " не найден");
+        }
+        storage.remove(id);
+    }
 }

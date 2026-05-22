@@ -35,7 +35,6 @@ public class MeasurementTab {
 
     private final BorderPane root;
     private final TableView<Measurement> tableView;
-
     public MeasurementTab(MeasurementService measurementService,
                           SampleService sampleService,
                           AuthService authService) {
@@ -91,12 +90,14 @@ public class MeasurementTab {
 
     private HBox buildToolbar() {
         Button btnAdd     = new Button("Добавить");
-        Button btnRefresh = new Button("🔄 Обновить");
+        Button btnRefresh = new Button("Обновить");
+        Button btnDelete = new Button("Удалить");
 
         btnAdd.setOnAction(e -> handleAdd());
         btnRefresh.setOnAction(e -> refresh());
+        btnDelete.setOnAction(e -> handleDelete());
 
-        HBox toolbar = new HBox(8, btnAdd, new Separator(), btnRefresh);
+        HBox toolbar = new HBox(8, btnAdd, btnDelete, new Separator(), btnRefresh);
         toolbar.setPadding(new Insets(4));
         return toolbar;
     }
@@ -133,6 +134,31 @@ public class MeasurementTab {
             }
         });
     }
+
+    private void handleDelete() {
+        Measurement selected = tableView.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            showError("Ничего не выбрано", "Выберите измерение в таблице.");
+            return;
+        }
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Удалить измерение #" + selected.getId()
+                        + " (" + selected.getParam().name() + " = " + selected.getValue() + ")?",
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setTitle("Подтверждение удаления");
+        confirm.setHeaderText(null);
+        confirm.showAndWait().ifPresent(btn -> {
+            if (btn == ButtonType.OK) {
+                try {
+                    measurementService.delete(selected.getId());
+                    refresh();
+                } catch (IllegalArgumentException ex) {
+                    showError("Ошибка при удалении", ex.getMessage());
+                }
+            }
+        });
+    }
+
 
     public void refresh() {
         List<Sample> allSamples = sampleService.getAll();

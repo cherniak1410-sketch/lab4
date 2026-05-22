@@ -84,6 +84,7 @@ public class SampleService {
     // Изменение
     // -------------------------------------------------------------------------
 
+
     public Sample update(long id, String field, String value) {
         Sample sample = getById(id);
         authService.requireOwnership(sample.getOwnerUsername(), "Sample#" + id);
@@ -131,4 +132,10 @@ public class SampleService {
     public void setNextId(long nextId) { this.nextId = nextId; }
 
     public long getNextId() { return nextId; }
+    public void delete(long id) {
+        if (!storage.containsKey(id)) {
+            throw new IllegalArgumentException("Образец с id=" + id + " не найден");
+        }
+        storage.remove(id);
+    }
 }

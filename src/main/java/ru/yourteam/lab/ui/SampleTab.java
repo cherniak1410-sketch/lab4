@@ -108,14 +108,16 @@ public class SampleTab {
 
     private HBox buildToolbar() {
         Button btnAdd     = new Button("Добавить");
-        Button btnRefresh = new Button("🔄 Обновить");
+        Button btnRefresh = new Button(" Обновить");
+        Button btnDelete = new Button("Удалить");
 
         btnAdd.setOnAction(e -> handleAdd());
         btnEdit.setOnAction(e -> handleEdit());
         btnArchive.setOnAction(e -> handleArchive());
+        btnDelete.setOnAction(e -> handleDelete());
         btnRefresh.setOnAction(e -> refresh());
 
-        HBox toolbar = new HBox(8, btnAdd, btnEdit, btnArchive, new Separator(), btnRefresh);
+        HBox toolbar = new HBox(8, btnAdd, btnEdit, btnArchive, btnDelete, new Separator(), btnRefresh);
         toolbar.setPadding(new Insets(4));
         return toolbar;
     }
@@ -210,6 +212,39 @@ public class SampleTab {
                     refresh();
                 } catch (Exception ex) {
                     showError("Ошибка", ex.getMessage());
+                }
+            }
+        });
+    }
+    private void handleDelete() {
+        Sample selected = tableView.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            showError("Ничего не выбрано", "Выберите образец в таблице.");
+            return;
+        }
+        int measurementCount = measurementService.getBySampleId(selected.getId()).size();
+        String warningText = "Удалить образец «" + selected.getName() + "»?";
+
+        if (measurementCount > 0) {
+            warningText += "\n\nВНИМАНИЕ: вместе с образцом удалятся "
+                    + measurementCount + " измерений!";
+        }
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                warningText,
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setTitle("Подтверждение удаления");
+        confirm.setHeaderText(null);
+        confirm.showAndWait().ifPresent(btn -> {
+            if (btn == ButtonType.OK) {
+                try {
+                    measurementService.getBySampleId(selected.getId())
+                            .forEach(m -> measurementService.delete(m.getId()));
+
+                    sampleService.delete(selected.getId());
+
+                    refresh();
+                } catch (IllegalArgumentException ex) {
+                    showError("Ошибка при удалении", ex.getMessage());
                 }
             }
         });
