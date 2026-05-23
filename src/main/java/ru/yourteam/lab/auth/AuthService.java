@@ -114,7 +114,7 @@ public class AuthService {
             return;
         }
         // Личные объекты — только владельцу
-        if (!currentUser.getLogin().equals(ownerUsername)) {
+        if(!currentUser.getLogin().equals(ownerUsername)) {
             throw new IllegalArgumentException(
                     "нет прав на изменение объекта «" + objectLabel + "» (владелец: " + ownerUsername + ")");
         }
@@ -145,4 +145,3 @@ public class AuthService {
         }
     }
 }
-

@@ -16,7 +16,6 @@ import ru.yourteam.lab.storage.FileStorage;
 import ru.yourteam.lab.storage.UserStorage;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -33,25 +32,28 @@ public class MainWindow {
     private final UserStorage userStorage;
     private final FileStorage fileStorage = new FileStorage();
 
+    /**
+     * @param onLogout колбэк, вызывается при нажатии кнопки "Выйти"
+     */
     public MainWindow(SampleService sampleService,
                       MeasurementService measurementService,
                       ProtocolService protocolService,
                       AuthService authService,
-                      UserStorage userStorage) {
+                      UserStorage userStorage,
+                      Runnable onLogout) {
         this.sampleService      = sampleService;
         this.measurementService = measurementService;
         this.protocolService    = protocolService;
         this.authService        = authService;
         this.userStorage        = userStorage;
 
-        // Вкладки получают AuthService для управления правами на кнопки
         sampleTab      = new SampleTab(sampleService, measurementService, authService);
         measurementTab = new MeasurementTab(measurementService, sampleService, authService);
         protocolTab    = new ProtocolTab(protocolService, measurementService, sampleService, authService);
 
-        Tab tabSamples      = new Tab("Образцы",    sampleTab.getRoot());
-        Tab tabMeasurements = new Tab("Измерения",  measurementTab.getRoot());
-        Tab tabProtocols    = new Tab("Протоколы",  protocolTab.getRoot());
+        Tab tabSamples      = new Tab("Образцы",   sampleTab.getRoot());
+        Tab tabMeasurements = new Tab("Измерения", measurementTab.getRoot());
+        Tab tabProtocols    = new Tab("Протоколы", protocolTab.getRoot());
 
         tabSamples.setClosable(false);
         tabMeasurements.setClosable(false);
@@ -59,11 +61,13 @@ public class MainWindow {
 
         TabPane tabPane = new TabPane(tabSamples, tabMeasurements, tabProtocols);
 
-        // --- Верхняя панель ---
-        Button btnSave = new Button("💾 Сохранить");
-        Button btnLoad = new Button("📂 Загрузить");
+        //  Верхняя панель
+        Button btnSave   = new Button(" Сохранить");
+        Button btnLoad   = new Button(" Загрузить");
+        Button btnLogout = new Button(" Выйти");
 
-        // Метка с текущим пользователем
+        btnLogout.setStyle("-fx-text-fill: #c0392b;");
+
         Label userLabel = new Label("👤 " + authService.getCurrentUsername());
         userLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
 
@@ -73,7 +77,21 @@ public class MainWindow {
         btnSave.setOnAction(e -> handleSave());
         btnLoad.setOnAction(e -> handleLoad());
 
-        HBox topBar = new HBox(8, btnSave, btnLoad, spacer, userLabel);
+        // При нажатии "Выйти" спрашиваем подтверждение, затем вызываем колбэк
+        btnLogout.setOnAction(e -> {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "Выйти из аккаунта «" + authService.getCurrentUsername() + "»?",
+                    ButtonType.OK, ButtonType.CANCEL);
+            confirm.setTitle("Подтверждение выхода");
+            confirm.setHeaderText(null);
+            confirm.showAndWait().ifPresent(btn -> {
+                if (btn == ButtonType.OK) {
+                    onLogout.run();
+                }
+            });
+        });
+
+        HBox topBar = new HBox(8, btnSave, btnLoad, spacer, userLabel, btnLogout);
         topBar.setPadding(new Insets(6, 10, 6, 8));
         topBar.setStyle("-fx-background-color: #f0f0f0; -fx-border-color: #ccc; -fx-border-width: 0 0 1 0;");
 
@@ -82,9 +100,7 @@ public class MainWindow {
         root.setCenter(tabPane);
     }
 
-    // -------------------------------------------------------------------------
     // Сохранение / Загрузка
-    // -------------------------------------------------------------------------
 
     private void handleSave() {
         FileChooser fc = new FileChooser();
@@ -119,18 +135,13 @@ public class MainWindow {
 
             mergeIntoStorage(
                     (List<Sample>) data.get("samples"),
-                    sampleService.getStorage(),
-                    sampleService);
-
+                    sampleService.getStorage(), sampleService);
             mergeIntoStorageMeas(
                     (List<Measurement>) data.get("measurements"),
-                    measurementService.getStorage(),
-                    measurementService);
-
+                    measurementService.getStorage(), measurementService);
             mergeIntoStorageProt(
                     (List<Protocol>) data.get("protocols"),
-                    protocolService.getStorage(),
-                    protocolService);
+                    protocolService.getStorage(), protocolService);
 
             sampleTab.refresh();
             measurementTab.refresh();
@@ -142,9 +153,7 @@ public class MainWindow {
         }
     }
 
-    private void mergeIntoStorage(List<Sample> list,
-                                  Map<Long, Sample> store,
-                                  SampleService service) {
+    private void mergeIntoStorage(List<Sample> list, Map<Long, Sample> store, SampleService service) {
         if (list == null) return;
         long maxId = service.getNextId() - 1;
         for (Sample s : list) {
@@ -159,9 +168,7 @@ public class MainWindow {
         service.setNextId(maxId + 1);
     }
 
-    private void mergeIntoStorageMeas(List<Measurement> list,
-                                      Map<Long, Measurement> store,
-                                      MeasurementService service) {
+    private void mergeIntoStorageMeas(List<Measurement> list, Map<Long, Measurement> store, MeasurementService service) {
         if (list == null) return;
         long maxId = service.getNextId() - 1;
         for (Measurement m : list) {
@@ -176,9 +183,7 @@ public class MainWindow {
         service.setNextId(maxId + 1);
     }
 
-    private void mergeIntoStorageProt(List<Protocol> list,
-                                      Map<Long, Protocol> store,
-                                      ProtocolService service) {
+    private void mergeIntoStorageProt(List<Protocol> list, Map<Long, Protocol> store, ProtocolService service) {
         if (list == null) return;
         long maxId = service.getNextId() - 1;
         for (Protocol p : list) {
@@ -193,9 +198,7 @@ public class MainWindow {
         service.setNextId(maxId + 1);
     }
 
-    // -------------------------------------------------------------------------
     // Вспомогательные диалоги
-    // -------------------------------------------------------------------------
 
     private void showError(String title, String message) {
         Alert alert = new Alert(Alert.AlertType.ERROR, message, ButtonType.OK);
