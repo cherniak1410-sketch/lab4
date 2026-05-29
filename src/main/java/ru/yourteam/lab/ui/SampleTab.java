@@ -95,6 +95,7 @@ public class SampleTab {
         Button btnEdit    = new Button("Редактировать");
         Button btnArchive = new Button("Архивировать");
         Button btnDelete  = new Button("Удалить"); // ← НОВАЯ КНОПКА
+        Button btnRestore = new Button("Восстановить");
         Button btnRefresh = new Button("🔄 Обновить");
 
         btnAdd.setOnAction(e -> handleAdd());
@@ -102,8 +103,32 @@ public class SampleTab {
         btnArchive.setOnAction(e -> handleArchive());
         btnDelete.setOnAction(e -> handleDelete()); // ← НОВЫЙ ОБРАБОТЧИК
         btnRefresh.setOnAction(e -> refresh());
+        btnRestore.setOnAction(e -> {
+            TextInputDialog dialog = new TextInputDialog();
+            dialog.setTitle("Восстановление образца");
+            dialog.setHeaderText("Введите ID образца");
 
-        HBox toolbar = new HBox(8, btnAdd, btnEdit, btnArchive, btnDelete, new Separator(), btnRefresh);
+            dialog.showAndWait().ifPresent(value -> {
+                try {
+                    long id = Long.parseLong(value);
+                    sampleService.restore(id);
+                    refresh();
+                } catch (Exception ex) {
+                    showError("Ошибка", ex.getMessage());
+                }
+            });
+        });
+
+        HBox toolbar = new HBox(
+                8,
+                btnAdd,
+                btnEdit,
+                btnArchive,
+                btnDelete,
+                btnRestore,
+                new Separator(),
+                btnRefresh
+        );
         toolbar.setPadding(new Insets(4));
         return toolbar;
     }

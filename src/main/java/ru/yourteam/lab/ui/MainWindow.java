@@ -65,6 +65,50 @@ public class MainWindow {
         Button btnSave   = new Button(" Сохранить");
         Button btnLoad   = new Button(" Загрузить");
         Button btnLogout = new Button(" Выйти");
+        Button btnDeleteAccount = new Button("Удалить аккаунт");
+        btnDeleteAccount.setStyle("-fx-background-color: #c0392b; -fx-text-fill: white;");
+        btnDeleteAccount.setOnAction(e -> {
+            Alert confirm = new Alert(
+                    Alert.AlertType.CONFIRMATION,
+                    "Удалить аккаунт без возможности восстановления?",
+                    ButtonType.YES,
+                    ButtonType.NO
+            );
+
+            confirm.setHeaderText("Все данные будут удалены");
+
+            confirm.showAndWait().ifPresent(result -> {
+                if (result == ButtonType.YES) {
+                    String username = authService.getCurrentUsername();
+
+                    // Удаляем все образцы пользователя
+                    for (Sample sample : sampleService.getAll()) {
+                        if (sample.getOwnerUsername().equals(username)) {
+                            sampleService.delete(sample.getId());
+                        }
+                    }
+
+                    // Удаляем все измерения пользователя
+                    for (Measurement measurement :
+                            measurementService.getStorage().values()) {
+
+                        if (measurement.getOwnerUsername().equals(username)) {
+                            measurement.setDeleted(true);
+                        }
+                    }
+
+                    authService.deleteCurrentUser();
+                    Alert ok = new Alert(
+                            Alert.AlertType.INFORMATION,
+                            "Аккаунт удалён"
+                    );
+
+                    ok.showAndWait();
+
+                    onLogout.run();
+                }
+            });
+        });
 
         btnLogout.setStyle("-fx-text-fill: #c0392b;");
 
@@ -91,7 +135,15 @@ public class MainWindow {
             });
         });
 
-        HBox topBar = new HBox(8, btnSave, btnLoad, spacer, userLabel, btnLogout);
+        HBox topBar = new HBox(
+                8,
+                btnSave,
+                btnLoad,
+                spacer,
+                userLabel,
+                btnDeleteAccount,
+                btnLogout
+        );
         topBar.setPadding(new Insets(6, 10, 6, 8));
         topBar.setStyle("-fx-background-color: #f0f0f0; -fx-border-color: #ccc; -fx-border-width: 0 0 1 0;");
 
@@ -215,4 +267,4 @@ public class MainWindow {
     }
 
     public Parent getRoot() { return root; }
-}
+            }

@@ -11,6 +11,7 @@ public class Sample {
     private String ownerUsername;
     private final Instant createdAt;
     private Instant updatedAt;
+    private boolean deleted;
 
 
     public Sample(String name, String type, String location) {
@@ -21,6 +22,7 @@ public class Sample {
         this.ownerUsername = "SYSTEM";
         this.createdAt = Instant.now();
         this.updatedAt = Instant.now();
+        this.deleted = false;
     }
 
     public long getId() { return id; }
@@ -31,6 +33,15 @@ public class Sample {
     public String getOwnerUsername() { return ownerUsername; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+
+    public boolean isDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
+        this.updatedAt = Instant.now();
+    }
 
 
     public void setId(long id) { this.id = id; }

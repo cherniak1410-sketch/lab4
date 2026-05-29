@@ -56,10 +56,16 @@ public class MeasurementService {
 
     public List<Measurement> getBySampleId(long sampleId) {
         List<Measurement> result = new ArrayList<>();
+
         for (Measurement m : storage.values()) {
-            if (m.getSampleId() == sampleId) result.add(m);
+            if (m.getSampleId() == sampleId && !m.isDeleted()) {
+                result.add(m);
+            }
         }
-        result.sort((a, b) -> b.getMeasuredAt().compareTo(a.getMeasuredAt()));
+
+        result.sort((a, b) ->
+                b.getMeasuredAt().compareTo(a.getMeasuredAt()));
+
         return result;
     }
 
@@ -99,9 +105,33 @@ public class MeasurementService {
 
     public long getNextId() { return nextId; }
     public void delete(long id) {
-        if (!storage.containsKey(id)) {
-            throw new IllegalArgumentException("Измерение с id=" + id + " не найден");
+        Measurement measurement = storage.get(id);
+
+        if (measurement == null) {
+            throw new IllegalArgumentException(
+                    "Измерение с id=" + id + " не найдено");
         }
-        storage.remove(id);
+
+        authService.requireOwnership(
+                measurement.getOwnerUsername(),
+                "Measurement#" + id
+        );
+
+        measurement.setDeleted(true);
     }
-}
+
+    public void restore(long id) {
+        Measurement measurement = storage.get(id);
+
+        if (measurement == null) {
+            throw new IllegalArgumentException(
+                    "Измерение с id=" + id + " не найдено");
+        }
+        authService.requireOwnership(
+                measurement.getOwnerUsername(),
+                "Measurement#" + id
+        );
+
+        measurement.setDeleted(false);
+    }
+    }

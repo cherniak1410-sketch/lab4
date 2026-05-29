@@ -144,4 +144,10 @@ public class AuthService {
             throw new IllegalArgumentException("пароль слишком короткий (минимум 4 символа)");
         }
     }
+    public void deleteCurrentUser() {
+        requireLogin();
+
+        users.remove(currentUser.getLogin());
+        currentUser = null;
+    }
 }

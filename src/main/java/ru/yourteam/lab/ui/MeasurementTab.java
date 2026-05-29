@@ -92,12 +92,34 @@ public class MeasurementTab {
         Button btnAdd     = new Button("Добавить");
         Button btnRefresh = new Button("Обновить");
         Button btnDelete = new Button("Удалить");
+        Button btnRestore = new Button("Восстановить");
 
         btnAdd.setOnAction(e -> handleAdd());
         btnRefresh.setOnAction(e -> refresh());
         btnDelete.setOnAction(e -> handleDelete());
+        btnRestore.setOnAction(e -> {
+            TextInputDialog dialog = new TextInputDialog();
+            dialog.setTitle("Восстановление");
+            dialog.setHeaderText("Введите ID измерения");
 
-        HBox toolbar = new HBox(8, btnAdd, btnDelete, new Separator(), btnRefresh);
+            dialog.showAndWait().ifPresent(value -> {
+                try {
+                    long id = Long.parseLong(value);
+                    measurementService.restore(id);
+                    refresh();
+                } catch (Exception ex) {
+                    showError("Ошибка", ex.getMessage());
+                }
+            });
+        });
+
+        HBox toolbar = new HBox(
+                8,
+                btnAdd,
+                btnDelete,
+                btnRestore,
+                btnRefresh
+        );
         toolbar.setPadding(new Insets(4));
         return toolbar;
     }

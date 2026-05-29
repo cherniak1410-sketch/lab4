@@ -13,6 +13,7 @@ public class Measurement {
     private String ownerUsername;
     private final Instant createdAt;
     private Instant updatedAt;
+    private boolean deleted;
 
     // Конструктор для создания нового измерения
     public Measurement(long sampleId, MeasurementParam param, double value,
@@ -24,6 +25,7 @@ public class Measurement {
         this.method = method;
         this.ownerUsername = "SYSTEM";
         this.measuredAt = Instant.now();
+        this.deleted = false;
         this.createdAt = Instant.now();
         this.updatedAt = Instant.now();
     }
@@ -39,6 +41,13 @@ public class Measurement {
     public String getOwnerUsername() { return ownerUsername; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public boolean isDeleted() {
+        return deleted;
+    }
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
+        this.updatedAt = Instant.now();
+    }
 
     // Сеттеры (изменить значения)
     public void setId(long id) { this.id = id; }

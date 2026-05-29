@@ -61,7 +61,26 @@ public class SampleService {
     }
 
     public List<Sample> getAll() {
-        return new ArrayList<>(storage.values());
+        List<Sample> result = new ArrayList<>();
+
+        for (Sample sample : storage.values()) {
+            if (!sample.isDeleted()) {
+                result.add(sample);
+            }
+        }
+
+        return result;
+    }
+    public List<Sample> getDeleted() {
+        List<Sample> result = new ArrayList<>();
+
+        for (Sample sample : storage.values()) {
+            if (sample.isDeleted()) {
+                result.add(sample);
+            }
+        }
+
+        return result;
     }
 
     public List<Sample> filterByStatus(SampleStatus status) {
@@ -132,10 +151,27 @@ public class SampleService {
     public void setNextId(long nextId) { this.nextId = nextId; }
 
     public long getNextId() { return nextId; }
+
     public void delete(long id) {
-        if (!storage.containsKey(id)) {
-            throw new IllegalArgumentException("Образец с id=" + id + " не найден");
-        }
-        storage.remove(id);
+        Sample sample = getById(id);
+
+        authService.requireOwnership(
+                sample.getOwnerUsername(),
+                "Sample#" + id
+        );
+
+        sample.setDeleted(true);
     }
+
+    public void restore(long id) {
+        Sample sample = getById(id);
+
+        authService.requireOwnership(
+                sample.getOwnerUsername(),
+                "Sample#" + id
+        );
+
+        sample.setDeleted(false);
+    }
+
 }
