@@ -3,29 +3,46 @@ package ru.yourteam.lab.service;
 import ru.yourteam.lab.auth.AuthService;
 import ru.yourteam.lab.domain.Measurement;
 import ru.yourteam.lab.domain.MeasurementParam;
+import ru.yourteam.lab.repository.MeasurementRepository;
 import ru.yourteam.lab.validator.MeasurementValidator;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.DoubleSummaryStatistics;
 
 /**
  * Сервис управления измерениями.
  *
- * Этап 5: создание требует авторизации; владелец = текущий пользователь.
- * Измерения не редактируются (только добавляются), поэтому проверка прав
- * нужна только при add.
+ * Этап 6: данные хранятся синхронно в памяти (Map) и в PostgreSQL.
+ * При старте загружаются из БД в память.
  */
 public class MeasurementService {
 
-    private final Map<Long, Measurement> storage = new LinkedHashMap<>();
-    private long nextId = 1;
+    private final Map<Long, Measurement> storage = new ConcurrentHashMap<>();
+    private final MeasurementRepository repository;
     private final AuthService authService;
 
-    public MeasurementService(AuthService authService) {
+    public MeasurementService(AuthService authService, MeasurementRepository repository) {
         this.authService = authService;
+        this.repository = repository;
     }
 
+    // -------------------------------------------------------------------------
+    // Загрузка из БД при старте
+    // -------------------------------------------------------------------------
+
+    public void loadFromDatabase() {
+        List<Measurement> all = repository.findAll();
+        storage.clear();
+        for (Measurement measurement : all) {
+            storage.put(measurement.getId(), measurement);
+        }
+        System.out.println("[DB] Загружено " + all.size() + " измерений из PostgreSQL");
+    }
+
+    // -------------------------------------------------------------------------
     // Создание
+    // -------------------------------------------------------------------------
 
     public Measurement add(long sampleId, String paramStr, double value,
                            String unit, String method) {
@@ -39,43 +56,42 @@ public class MeasurementService {
         MeasurementParam param = MeasurementParam.valueOf(paramStr);
 
         Measurement measurement = new Measurement(sampleId, param, value, unit, method);
-        measurement.setId(nextId++);
         measurement.setOwnerUsername(authService.getCurrentUsername());
 
+        // 1. Сохраняем в БД (получаем ID)
+        repository.insert(measurement);
+
+        // 2. Сохраняем в память
         storage.put(measurement.getId(), measurement);
+
+        System.out.println("[DB] Создано измерение #" + measurement.getId() + " для sample #" + sampleId);
         return measurement;
     }
 
     // -------------------------------------------------------------------------
-    // Чтение (доступно всем)
+    // Чтение (только из памяти)
     // -------------------------------------------------------------------------
 
     public Optional<Measurement> findById(long id) {
-        return Optional.ofNullable(storage.get(id));
+        Measurement measurement = storage.get(id);
+        if (measurement != null && !measurement.isDeleted()) {
+            return Optional.of(measurement);
+        }
+        return Optional.empty();
     }
 
     public List<Measurement> getBySampleId(long sampleId) {
-        List<Measurement> result = new ArrayList<>();
-
-        for (Measurement m : storage.values()) {
-            if (m.getSampleId() == sampleId && !m.isDeleted()) {
-                result.add(m);
-            }
-        }
-
-        result.sort((a, b) ->
-                b.getMeasuredAt().compareTo(a.getMeasuredAt()));
-
-        return result;
+        return storage.values().stream()
+                .filter(m -> !m.isDeleted() && m.getSampleId() == sampleId)
+                .sorted((a, b) -> b.getMeasuredAt().compareTo(a.getMeasuredAt()))
+                .toList();
     }
 
     public List<Measurement> getBySampleIdAndParam(long sampleId, MeasurementParam param) {
-        List<Measurement> result = new ArrayList<>();
-        for (Measurement m : storage.values()) {
-            if (m.getSampleId() == sampleId && m.getParam() == param) result.add(m);
-        }
-        result.sort((a, b) -> b.getMeasuredAt().compareTo(a.getMeasuredAt()));
-        return result;
+        return storage.values().stream()
+                .filter(m -> !m.isDeleted() && m.getSampleId() == sampleId && m.getParam() == param)
+                .sorted((a, b) -> b.getMeasuredAt().compareTo(a.getMeasuredAt()))
+                .toList();
     }
 
     public Map<String, Object> getStats(long sampleId, MeasurementParam param) {
@@ -89,49 +105,57 @@ public class MeasurementService {
 
         Map<String, Object> result = new HashMap<>();
         result.put("count", stats.getCount());
-        result.put("min",   stats.getMin());
-        result.put("max",   stats.getMax());
-        result.put("avg",   stats.getAverage());
+        result.put("min", stats.getMin());
+        result.put("max", stats.getMax());
+        result.put("avg", stats.getAverage());
         return result;
     }
 
     // -------------------------------------------------------------------------
-    // Внутренний доступ
+    // Удаление / Восстановление (мягкое удаление)
     // -------------------------------------------------------------------------
 
-    public Map<Long, Measurement> getStorage() { return storage; }
-
-    public void setNextId(long nextId) { this.nextId = nextId; }
-
-    public long getNextId() { return nextId; }
     public void delete(long id) {
         Measurement measurement = storage.get(id);
-
         if (measurement == null) {
-            throw new IllegalArgumentException(
-                    "Измерение с id=" + id + " не найдено");
+            throw new IllegalArgumentException("Измерение с id=" + id + " не найдено");
         }
 
-        authService.requireOwnership(
-                measurement.getOwnerUsername(),
-                "Measurement#" + id
-        );
+        authService.requireOwnership(measurement.getOwnerUsername(), "Measurement#" + id);
 
+        // 1. Мягкое удаление в БД
+        repository.updateDeleted(id, true);
+
+        // 2. Обновляем в памяти
         measurement.setDeleted(true);
+        storage.put(id, measurement);
+
+        System.out.println("[DB] Удалено (soft delete) измерение #" + id);
     }
 
     public void restore(long id) {
         Measurement measurement = storage.get(id);
-
-        if (measurement == null) {
-            throw new IllegalArgumentException(
-                    "Измерение с id=" + id + " не найдено");
+        if (measurement == null || !measurement.isDeleted()) {
+            throw new IllegalArgumentException("Измерение с id=" + id + " не найдено или не удалено");
         }
-        authService.requireOwnership(
-                measurement.getOwnerUsername(),
-                "Measurement#" + id
-        );
 
+        authService.requireOwnership(measurement.getOwnerUsername(), "Measurement#" + id);
+
+        // 1. Восстанавливаем в БД
+        repository.updateDeleted(id, false);
+
+        // 2. Обновляем в памяти
         measurement.setDeleted(false);
+        storage.put(id, measurement);
+
+        System.out.println("[DB] Восстановлено измерение #" + id);
     }
+
+    // -------------------------------------------------------------------------
+    // Для совместимости с UI
+    // -------------------------------------------------------------------------
+
+    public Map<Long, Measurement> getStorage() {
+        return storage;
     }
+}

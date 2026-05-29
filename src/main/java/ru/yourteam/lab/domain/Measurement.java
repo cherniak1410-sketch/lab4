@@ -11,7 +11,7 @@ public class Measurement {
     private String method;
     private Instant measuredAt;
     private String ownerUsername;
-    private final Instant createdAt;
+    private Instant createdAt;
     private Instant updatedAt;
     private boolean deleted;
 
@@ -25,12 +25,12 @@ public class Measurement {
         this.method = method;
         this.ownerUsername = "SYSTEM";
         this.measuredAt = Instant.now();
-        this.deleted = false;
         this.createdAt = Instant.now();
         this.updatedAt = Instant.now();
+        this.deleted = false;
     }
 
-    // Геттеры (получить значения)
+    // Геттеры
     public long getId() { return id; }
     public long getSampleId() { return sampleId; }
     public MeasurementParam getParam() { return param; }
@@ -41,15 +41,9 @@ public class Measurement {
     public String getOwnerUsername() { return ownerUsername; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
-    public boolean isDeleted() {
-        return deleted;
-    }
-    public void setDeleted(boolean deleted) {
-        this.deleted = deleted;
-        this.updatedAt = Instant.now();
-    }
+    public boolean isDeleted() { return deleted; }
 
-    // Сеттеры (изменить значения)
+    // Сеттеры
     public void setId(long id) { this.id = id; }
 
     public void setSampleId(long sampleId) {
@@ -85,5 +79,19 @@ public class Measurement {
     public void setOwnerUsername(String ownerUsername) {
         this.ownerUsername = ownerUsername;
         this.updatedAt = Instant.now();
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
+        this.updatedAt = Instant.now();
+    }
+
+    // Сеттеры для восстановления из БД
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
     }
 }

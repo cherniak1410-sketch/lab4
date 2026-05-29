@@ -5,26 +5,16 @@ import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 import ru.yourteam.lab.auth.AuthService;
+import ru.yourteam.lab.db.DbConfig;
+import ru.yourteam.lab.db.DbConnectionFactory;
+import ru.yourteam.lab.repository.*;
 import ru.yourteam.lab.service.MeasurementService;
 import ru.yourteam.lab.service.ProtocolService;
 import ru.yourteam.lab.service.SampleService;
-import ru.yourteam.lab.storage.UserStorage;
 
-import java.io.IOException;
-
-/**
- * Точка входа JavaFX-приложения.
- *
- * Цикл работы:
- *  1. Показываем LoginWindow.
- *  2. После успешного входа открываем главное окно.
- *  3. При нажатии "Выйти" — закрываем главное окно и снова показываем LoginWindow.
- *  4. Если LoginWindow закрыт без входа — завершаем приложение.
- */
 public class LabFxApp extends Application {
 
     private AuthService authService;
-    private UserStorage userStorage;
     private SampleService sampleService;
     private MeasurementService measurementService;
     private ProtocolService protocolService;
@@ -34,33 +24,65 @@ public class LabFxApp extends Application {
     public void start(Stage primaryStage) {
         this.primaryStage = primaryStage;
 
-        this.userStorage = new UserStorage();
-        this.authService = new AuthService();
+        // 1. Инициализация подключения к БД
+        DbConfig dbConfig = new DbConfig();
+        DbConnectionFactory connectionFactory = new DbConnectionFactory(dbConfig);
 
-        // Загружаем пользователей при старте приложения (один раз)
+        // 2. Создание таблиц (если не существуют)
+        SchemaInitializer schemaInitializer = new SchemaInitializer(connectionFactory);
         try {
-            authService.loadUsers(userStorage.load());
-        } catch (IOException e) {
-            System.out.println("Предупреждение: не удалось загрузить пользователей: " + e.getMessage());
+            schemaInitializer.initialize();
+            System.out.println("✅ База данных инициализирована");
+        } catch (RuntimeException e) {
+            showErrorAndExit("Ошибка подключения к БД", e.getMessage());
+            return;
         }
 
-        // Создаём сервисы один раз — данные живут всё время работы приложения
-        // даже при смене пользователя данные не сбрасываются
-        this.sampleService      = new SampleService(authService);
-        this.measurementService = new MeasurementService(authService);
-        this.protocolService    = new ProtocolService(authService);
+        // 3. Создание репозиториев
+        UserRepository userRepository = new UserRepository(connectionFactory);
+        SampleRepository sampleRepository = new SampleRepository(connectionFactory);
+        MeasurementRepository measurementRepository = new MeasurementRepository(connectionFactory);
+        ProtocolRepository protocolRepository = new ProtocolRepository(connectionFactory);
 
-        // Запускаем цикл логин → главное окно
+        // 4. Создание AuthService с репозиторием
+        this.authService = new AuthService(userRepository);
+
+        // 5. Загрузка пользователей из БД в память AuthService
+        authService.loadUsers(userRepository.findAll());
+        System.out.println("👥 Загружено пользователей: " + authService.getUsers().size());
+
+        // 6. Создание сервисов с репозиториями
+        this.sampleService = new SampleService(authService, sampleRepository);
+        this.measurementService = new MeasurementService(authService, measurementRepository);
+        this.protocolService = new ProtocolService(authService, protocolRepository);
+
+        // 7. Загрузка данных из БД в память сервисов
+        sampleService.loadFromDatabase();
+        measurementService.loadFromDatabase();
+        protocolService.loadFromDatabase();
+
+        System.out.println("📊 Загружено образцов: " + sampleService.getAll().size());
+        System.out.println("📊 Загружено измерений: " + measurementService.getStorage().size());
+        System.out.println("📊 Загружено протоколов: " + protocolService.getAll().size());
+
+        // 8. Показываем окно входа
         showLoginAndThenMain();
     }
 
-    /**
-     * Показывает окно логина.
-     * Если вошли — открывает главное окно.
-     * Если закрыли без входа — завершает приложение.
-     */
+    private void showErrorAndExit(String title, String message) {
+        javafx.scene.control.Alert alert = new javafx.scene.control.Alert(
+                javafx.scene.control.Alert.AlertType.ERROR,
+                message,
+                javafx.scene.control.ButtonType.OK
+        );
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.showAndWait();
+        Platform.exit();
+    }
+
     private void showLoginAndThenMain() {
-        LoginWindow loginWindow = new LoginWindow(authService, userStorage);
+        LoginWindow loginWindow = new LoginWindow(authService);
         boolean loggedIn = loginWindow.showAndWait();
 
         if (!loggedIn) {
@@ -71,15 +93,13 @@ public class LabFxApp extends Application {
         showMainWindow();
     }
 
-    /**
-     * Открывает главное окно.
-     * Передаёт колбэк onLogout — при выходе снова показывает окно логина.
-     */
     private void showMainWindow() {
         MainWindow mainWindow = new MainWindow(
-                sampleService, measurementService, protocolService,
-                authService, userStorage,
-                this::onLogout   // колбэк для кнопки "Выйти"
+                sampleService,
+                measurementService,
+                protocolService,
+                authService,
+                this::onLogout
         );
 
         Scene scene = new Scene(mainWindow.getRoot(), 1000, 650);
@@ -88,10 +108,6 @@ public class LabFxApp extends Application {
         primaryStage.show();
     }
 
-    /**
-     * Вызывается когда пользователь нажимает "Выйти" в главном окне.
-     * Сбрасывает текущего пользователя и снова показывает окно логина.
-     */
     private void onLogout() {
         authService.logout();
         primaryStage.hide();

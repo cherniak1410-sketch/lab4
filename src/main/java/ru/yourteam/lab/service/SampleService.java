@@ -3,25 +3,41 @@ package ru.yourteam.lab.service;
 import ru.yourteam.lab.auth.AuthService;
 import ru.yourteam.lab.domain.Sample;
 import ru.yourteam.lab.domain.SampleStatus;
+import ru.yourteam.lab.repository.SampleRepository;
 import ru.yourteam.lab.validator.SampleValidator;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Сервис управления образцами.
  *
- * Этап 5: при создании объекта владелец берётся из AuthService (текущий пользователь).
- * Изменение и архивирование требуют авторизации и прав на объект.
- * SYSTEM-объекты может редактировать любой авторизованный пользователь.
+ * Этап 6: данные хранятся синхронно в памяти (Map) и в PostgreSQL.
+ * При старте загружаются из БД в память.
+ * Каждая операция add/update/delete меняет и БД, и память.
  */
 public class SampleService {
 
-    private final Map<Long, Sample> storage = new LinkedHashMap<>();
-    private long nextId = 1;
+    private final Map<Long, Sample> storage = new ConcurrentHashMap<>();
+    private final SampleRepository repository;
     private final AuthService authService;
 
-    public SampleService(AuthService authService) {
+    public SampleService(AuthService authService, SampleRepository repository) {
         this.authService = authService;
+        this.repository = repository;
+    }
+
+    // -------------------------------------------------------------------------
+    // Загрузка из БД при старте
+    // -------------------------------------------------------------------------
+
+    public void loadFromDatabase() {
+        List<Sample> all = repository.findAll();
+        storage.clear();
+        for (Sample sample : all) {
+            storage.put(sample.getId(), sample);
+        }
+        System.out.println("[DB] Загружено " + all.size() + " образцов из PostgreSQL");
     }
 
     // -------------------------------------------------------------------------
@@ -36,73 +52,63 @@ public class SampleService {
         SampleValidator.validateLocation(location);
 
         Sample sample = new Sample(name, type, location);
-        sample.setId(nextId++);
-        // Владелец = текущий авторизованный пользователь
         sample.setOwnerUsername(authService.getCurrentUsername());
 
+        // 1. Сохраняем в БД (получаем ID)
+        repository.insert(sample);
+
+        // 2. Сохраняем в память
         storage.put(sample.getId(), sample);
+
+        System.out.println("[DB] Создан образец #" + sample.getId());
         return sample;
     }
 
     // -------------------------------------------------------------------------
-    // Чтение (доступно всем)
+    // Чтение (только из памяти, в БД не ходим)
     // -------------------------------------------------------------------------
 
     public Optional<Sample> findById(long id) {
-        return Optional.ofNullable(storage.get(id));
+        Sample sample = storage.get(id);
+        if (sample != null && !sample.isDeleted()) {
+            return Optional.of(sample);
+        }
+        return Optional.empty();
     }
 
     public Sample getById(long id) {
-        Sample sample = storage.get(id);
-        if (sample == null) {
-            throw new IllegalArgumentException("образец с id=" + id + " не найден");
-        }
-        return sample;
+        return findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("образец с id=" + id + " не найден"));
     }
 
     public List<Sample> getAll() {
-        List<Sample> result = new ArrayList<>();
-
-        for (Sample sample : storage.values()) {
-            if (!sample.isDeleted()) {
-                result.add(sample);
-            }
-        }
-
-        return result;
+        return storage.values().stream()
+                .filter(s -> !s.isDeleted())
+                .sorted(Comparator.comparing(Sample::getId))
+                .toList();
     }
+
     public List<Sample> getDeleted() {
-        List<Sample> result = new ArrayList<>();
-
-        for (Sample sample : storage.values()) {
-            if (sample.isDeleted()) {
-                result.add(sample);
-            }
-        }
-
-        return result;
+        return storage.values().stream()
+                .filter(Sample::isDeleted)
+                .toList();
     }
 
     public List<Sample> filterByStatus(SampleStatus status) {
-        List<Sample> result = new ArrayList<>();
-        for (Sample s : storage.values()) {
-            if (s.getStatus() == status) result.add(s);
-        }
-        return result;
+        return storage.values().stream()
+                .filter(s -> !s.isDeleted() && s.getStatus() == status)
+                .toList();
     }
 
     public List<Sample> filterByOwner(String username) {
-        List<Sample> result = new ArrayList<>();
-        for (Sample s : storage.values()) {
-            if (s.getOwnerUsername().equals(username)) result.add(s);
-        }
-        return result;
+        return storage.values().stream()
+                .filter(s -> !s.isDeleted() && s.getOwnerUsername().equals(username))
+                .toList();
     }
 
     // -------------------------------------------------------------------------
     // Изменение
     // -------------------------------------------------------------------------
-
 
     public Sample update(long id, String field, String value) {
         Sample sample = getById(id);
@@ -128,6 +134,14 @@ public class SampleService {
             default:
                 throw new IllegalArgumentException("нельзя менять поле '" + field + "'");
         }
+
+        // 1. Обновляем в БД
+        repository.update(sample);
+
+        // 2. Обновляем в памяти
+        storage.put(sample.getId(), sample);
+
+        System.out.println("[DB] Обновлён образец #" + id);
         return sample;
     }
 
@@ -139,39 +153,57 @@ public class SampleService {
             throw new IllegalArgumentException("образец уже ARCHIVED");
         }
         sample.setStatus(SampleStatus.ARCHIVED);
+
+        // 1. Обновляем в БД
+        repository.update(sample);
+
+        // 2. Обновляем в памяти
+        storage.put(sample.getId(), sample);
+
+        System.out.println("[DB] Архивирован образец #" + id);
         return sample;
     }
 
     // -------------------------------------------------------------------------
-    // Внутренний доступ (для загрузки файлов)
+    // Удаление / Восстановление (мягкое удаление)
     // -------------------------------------------------------------------------
-
-    public Map<Long, Sample> getStorage() { return storage; }
-
-    public void setNextId(long nextId) { this.nextId = nextId; }
-
-    public long getNextId() { return nextId; }
 
     public void delete(long id) {
         Sample sample = getById(id);
+        authService.requireOwnership(sample.getOwnerUsername(), "Sample#" + id);
 
-        authService.requireOwnership(
-                sample.getOwnerUsername(),
-                "Sample#" + id
-        );
-
+        // 1. Мягкое удаление в БД
         sample.setDeleted(true);
+        repository.update(sample);
+
+        // 2. Обновляем в памяти
+        storage.put(id, sample);
+
+        System.out.println("[DB] Удалён (soft delete) образец #" + id);
     }
 
     public void restore(long id) {
-        Sample sample = getById(id);
+        Sample sample = storage.get(id);
+        if (sample == null || !sample.isDeleted()) {
+            throw new IllegalArgumentException("образец с id=" + id + " не найден или не удалён");
+        }
+        authService.requireOwnership(sample.getOwnerUsername(), "Sample#" + id);
 
-        authService.requireOwnership(
-                sample.getOwnerUsername(),
-                "Sample#" + id
-        );
-
+        // 1. Восстанавливаем в БД
         sample.setDeleted(false);
+        repository.update(sample);
+
+        // 2. Обновляем в памяти
+        storage.put(id, sample);
+
+        System.out.println("[DB] Восстановлен образец #" + id);
     }
 
+    // -------------------------------------------------------------------------
+    // Для совместимости с UI
+    // -------------------------------------------------------------------------
+
+    public Map<Long, Sample> getStorage() {
+        return storage;
+    }
 }

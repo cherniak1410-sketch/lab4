@@ -249,12 +249,16 @@ public class SampleTab {
         });
     }
 
-    /** Перечитывает данные из сервиса и перерисовывает таблицу. */
     public void refresh() {
+        // Получаем свежие данные
         List<Sample> samples = sampleService.getAll();
-        tableView.setItems(FXCollections.observableArrayList(samples));
-    }
 
+        // Создаём НОВЫЙ ObservableList (это заставляет таблицу перерисоваться)
+        javafx.application.Platform.runLater(() -> {
+            tableView.setItems(FXCollections.observableArrayList(samples));
+            tableView.refresh();
+        });
+    }
     private void showError(String title, String message) {
         Alert alert = new Alert(Alert.AlertType.ERROR, message, ButtonType.OK);
         alert.setTitle(title);

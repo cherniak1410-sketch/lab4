@@ -9,10 +9,9 @@ public class Sample {
     private String location;
     private SampleStatus status;
     private String ownerUsername;
-    private final Instant createdAt;
-    private Instant updatedAt;
+    private Instant createdAt;      // ← ДОБАВИТЬ
+    private Instant updatedAt;      // ← ДОБАВИТЬ
     private boolean deleted;
-
 
     public Sample(String name, String type, String location) {
         this.name = name;
@@ -20,54 +19,32 @@ public class Sample {
         this.location = location;
         this.status = SampleStatus.ACTIVE;
         this.ownerUsername = "SYSTEM";
-        this.createdAt = Instant.now();
-        this.updatedAt = Instant.now();
+        this.createdAt = Instant.now();   // ← ДОБАВИТЬ
+        this.updatedAt = Instant.now();   // ← ДОБАВИТЬ
         this.deleted = false;
     }
 
+    // Геттеры
     public long getId() { return id; }
     public String getName() { return name; }
     public String getType() { return type; }
     public String getLocation() { return location; }
     public SampleStatus getStatus() { return status; }
     public String getOwnerUsername() { return ownerUsername; }
-    public Instant getCreatedAt() { return createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
+    public Instant getCreatedAt() { return createdAt; }      // ← ДОБАВИТЬ
+    public Instant getUpdatedAt() { return updatedAt; }      // ← ДОБАВИТЬ
+    public boolean isDeleted() { return deleted; }
 
-    public boolean isDeleted() {
-        return deleted;
-    }
-
-    public void setDeleted(boolean deleted) {
-        this.deleted = deleted;
-        this.updatedAt = Instant.now();
-    }
-
-
+    // Сеттеры
     public void setId(long id) { this.id = id; }
+    public void setName(String name) { this.name = name; this.updatedAt = Instant.now(); }
+    public void setType(String type) { this.type = type; this.updatedAt = Instant.now(); }
+    public void setLocation(String location) { this.location = location; this.updatedAt = Instant.now(); }
+    public void setStatus(SampleStatus status) { this.status = status; this.updatedAt = Instant.now(); }
+    public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; this.updatedAt = Instant.now(); }
+    public void setDeleted(boolean deleted) { this.deleted = deleted; this.updatedAt = Instant.now(); }
 
-    public void setName(String name) {
-        this.name = name;
-        this.updatedAt = Instant.now();
-    }
-
-    public void setType(String type) {
-        this.type = type;
-        this.updatedAt = Instant.now();
-    }
-
-    public void setLocation(String location) {
-        this.location = location;
-        this.updatedAt = Instant.now();
-    }
-
-    public void setStatus(SampleStatus status) {
-        this.status = status;
-        this.updatedAt = Instant.now();
-    }
-
-    public void setOwnerUsername(String ownerUsername) {
-        this.ownerUsername = ownerUsername;
-        this.updatedAt = Instant.now();
-    }
+    // Добавьте эти два сеттера для восстановления из БД:
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 }

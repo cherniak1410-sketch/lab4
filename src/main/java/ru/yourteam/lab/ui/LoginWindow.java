@@ -8,7 +8,7 @@ import javafx.scene.layout.*;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import ru.yourteam.lab.auth.AuthService;
-import ru.yourteam.lab.storage.UserStorage;
+import ru.yourteam.lab.auth.PasswordHasher;
 
 import java.io.IOException;
 
@@ -18,23 +18,23 @@ import java.io.IOException;
  * Главное окно открывается только после успешного входа.
  *
  * Поддерживает: вход в существующий аккаунт и быструю регистрацию.
+ *
+ * ВНИМАНИЕ: UserStorage больше не используется, пользователи хранятся в БД.
+ * Регистрация и вход работают через AuthService, который синхронизируется с БД.
  */
 public class LoginWindow {
 
     private final AuthService authService;
-    private final UserStorage userStorage;
     private final Stage stage;
 
     /** true если пользователь успешно вошёл или зарегистрировался. */
     private boolean loginSuccess = false;
 
-    public LoginWindow(AuthService authService, UserStorage userStorage) {
+    public LoginWindow(AuthService authService) {
         this.authService = authService;
-        this.userStorage = userStorage;
         this.stage = new Stage();
         stage.setTitle("Вход в систему");
         stage.setResizable(false);
-        // Блокируем остальные окна пока открыто это
         stage.initModality(Modality.APPLICATION_MODAL);
     }
 
@@ -90,8 +90,8 @@ public class LoginWindow {
             String password = passwordField.getText();
             try {
                 authService.register(login, password);
-                saveUsers();
-                // После регистрации сразу входим
+                // После регистрации пользователь уже сохранён в БД через UserRepository
+                // Теперь входим
                 authService.login(login, password);
                 loginSuccess = true;
                 stage.close();
@@ -131,14 +131,4 @@ public class LoginWindow {
 
         return new Scene(root);
     }
-
-    private void saveUsers() {
-        try {
-            userStorage.save(authService.getUsers());
-        } catch (IOException e) {
-            // Предупреждение, не критично для UI
-            System.out.println("Предупреждение: не удалось сохранить пользователей: " + e.getMessage());
-        }
-    }
 }
-

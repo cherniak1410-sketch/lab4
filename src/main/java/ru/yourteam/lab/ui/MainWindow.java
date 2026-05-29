@@ -12,8 +12,6 @@ import ru.yourteam.lab.domain.Sample;
 import ru.yourteam.lab.service.MeasurementService;
 import ru.yourteam.lab.service.ProtocolService;
 import ru.yourteam.lab.service.SampleService;
-import ru.yourteam.lab.storage.FileStorage;
-import ru.yourteam.lab.storage.UserStorage;
 
 import java.io.File;
 import java.util.List;
@@ -29,8 +27,6 @@ public class MainWindow {
     private final MeasurementService measurementService;
     private final ProtocolService protocolService;
     private final AuthService authService;
-    private final UserStorage userStorage;
-    private final FileStorage fileStorage = new FileStorage();
 
     /**
      * @param onLogout колбэк, вызывается при нажатии кнопки "Выйти"
@@ -39,13 +35,11 @@ public class MainWindow {
                       MeasurementService measurementService,
                       ProtocolService protocolService,
                       AuthService authService,
-                      UserStorage userStorage,
                       Runnable onLogout) {
         this.sampleService      = sampleService;
         this.measurementService = measurementService;
         this.protocolService    = protocolService;
         this.authService        = authService;
-        this.userStorage        = userStorage;
 
         sampleTab      = new SampleTab(sampleService, measurementService, authService);
         measurementTab = new MeasurementTab(measurementService, sampleService, authService);
@@ -61,7 +55,7 @@ public class MainWindow {
 
         TabPane tabPane = new TabPane(tabSamples, tabMeasurements, tabProtocols);
 
-        //  Верхняя панель
+        // Верхняя панель
         Button btnSave   = new Button(" Сохранить");
         Button btnLoad   = new Button(" Загрузить");
         Button btnLogout = new Button(" Выйти");
@@ -118,8 +112,14 @@ public class MainWindow {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        btnSave.setOnAction(e -> handleSave());
-        btnLoad.setOnAction(e -> handleLoad());
+        btnSave.setOnAction(e -> {
+            // TODO: сохранение в JSON (опционально, можно убрать)
+            showInfo("Информация", "Сохранение в JSON отключено. Данные хранятся в PostgreSQL.");
+        });
+
+        btnLoad.setOnAction(e -> {
+            showInfo("Информация", "Загрузка из JSON отключена. Данные загружаются из PostgreSQL при старте.");
+        });
 
         // При нажатии "Выйти" спрашиваем подтверждение, затем вызываем колбэк
         btnLogout.setOnAction(e -> {
@@ -152,104 +152,6 @@ public class MainWindow {
         root.setCenter(tabPane);
     }
 
-    // Сохранение / Загрузка
-
-    private void handleSave() {
-        FileChooser fc = new FileChooser();
-        fc.setTitle("Сохранить данные");
-        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("JSON файлы", "*.json"));
-        fc.setInitialFileName("lab_data.json");
-
-        File file = fc.showSaveDialog(root.getScene().getWindow());
-        if (file != null) {
-            try {
-                fileStorage.save(file.getAbsolutePath(),
-                        sampleService.getStorage(),
-                        measurementService.getStorage(),
-                        protocolService.getStorage());
-                showInfo("Сохранено", "Данные сохранены в:\n" + file.getAbsolutePath());
-            } catch (Exception ex) {
-                showError("Ошибка сохранения", ex.getMessage());
-            }
-        }
-    }
-
-    private void handleLoad() {
-        FileChooser fc = new FileChooser();
-        fc.setTitle("Загрузить данные");
-        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("JSON файлы", "*.json"));
-
-        File file = fc.showOpenDialog(root.getScene().getWindow());
-        if (file == null) return;
-
-        try {
-            var data = fileStorage.load(file.getAbsolutePath());
-
-            mergeIntoStorage(
-                    (List<Sample>) data.get("samples"),
-                    sampleService.getStorage(), sampleService);
-            mergeIntoStorageMeas(
-                    (List<Measurement>) data.get("measurements"),
-                    measurementService.getStorage(), measurementService);
-            mergeIntoStorageProt(
-                    (List<Protocol>) data.get("protocols"),
-                    protocolService.getStorage(), protocolService);
-
-            sampleTab.refresh();
-            measurementTab.refresh();
-            protocolTab.refresh();
-
-            showInfo("Загружено", "Данные добавлены из:\n" + file.getAbsolutePath());
-        } catch (Exception ex) {
-            showError("Ошибка загрузки", ex.getMessage());
-        }
-    }
-
-    private void mergeIntoStorage(List<Sample> list, Map<Long, Sample> store, SampleService service) {
-        if (list == null) return;
-        long maxId = service.getNextId() - 1;
-        for (Sample s : list) {
-            if (store.containsKey(s.getId())) {
-                long newId = service.getNextId();
-                s.setId(newId);
-                service.setNextId(newId + 1);
-            }
-            store.put(s.getId(), s);
-            if (s.getId() > maxId) maxId = s.getId();
-        }
-        service.setNextId(maxId + 1);
-    }
-
-    private void mergeIntoStorageMeas(List<Measurement> list, Map<Long, Measurement> store, MeasurementService service) {
-        if (list == null) return;
-        long maxId = service.getNextId() - 1;
-        for (Measurement m : list) {
-            if (store.containsKey(m.getId())) {
-                long newId = service.getNextId();
-                m.setId(newId);
-                service.setNextId(newId + 1);
-            }
-            store.put(m.getId(), m);
-            if (m.getId() > maxId) maxId = m.getId();
-        }
-        service.setNextId(maxId + 1);
-    }
-
-    private void mergeIntoStorageProt(List<Protocol> list, Map<Long, Protocol> store, ProtocolService service) {
-        if (list == null) return;
-        long maxId = service.getNextId() - 1;
-        for (Protocol p : list) {
-            if (store.containsKey(p.getId())) {
-                long newId = service.getNextId();
-                p.setId(newId);
-                service.setNextId(newId + 1);
-            }
-            store.put(p.getId(), p);
-            if (p.getId() > maxId) maxId = p.getId();
-        }
-        service.setNextId(maxId + 1);
-    }
-
     // Вспомогательные диалоги
 
     private void showError(String title, String message) {
@@ -267,4 +169,4 @@ public class MainWindow {
     }
 
     public Parent getRoot() { return root; }
-            }
+}

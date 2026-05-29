@@ -3,24 +3,40 @@ package ru.yourteam.lab.service;
 import ru.yourteam.lab.auth.AuthService;
 import ru.yourteam.lab.domain.MeasurementParam;
 import ru.yourteam.lab.domain.Protocol;
+import ru.yourteam.lab.repository.ProtocolRepository;
 import ru.yourteam.lab.validator.ProtocolValidator;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Сервис управления протоколами.
  *
- * Этап 5: создание требует авторизации; владелец = текущий пользователь.
- * SYSTEM-протоколы может редактировать любой авторизованный пользователь.
+ * Этап 6: данные хранятся синхронно в памяти (Map) и в PostgreSQL.
+ * При старте загружаются из БД в память.
  */
 public class ProtocolService {
 
-    private final Map<Long, Protocol> storage = new LinkedHashMap<>();
-    private long nextId = 1;
+    private final Map<Long, Protocol> storage = new ConcurrentHashMap<>();
+    private final ProtocolRepository repository;
     private final AuthService authService;
 
-    public ProtocolService(AuthService authService) {
+    public ProtocolService(AuthService authService, ProtocolRepository repository) {
         this.authService = authService;
+        this.repository = repository;
+    }
+
+    // -------------------------------------------------------------------------
+    // Загрузка из БД при старте
+    // -------------------------------------------------------------------------
+
+    public void loadFromDatabase() {
+        List<Protocol> all = repository.findAll();
+        storage.clear();
+        for (Protocol protocol : all) {
+            storage.put(protocol.getId(), protocol);
+        }
+        System.out.println("[DB] Загружено " + all.size() + " протоколов из PostgreSQL");
     }
 
     // -------------------------------------------------------------------------
@@ -34,15 +50,20 @@ public class ProtocolService {
         ProtocolValidator.validateRequiredParams(requiredParams);
 
         Protocol protocol = new Protocol(name, requiredParams);
-        protocol.setId(nextId++);
         protocol.setOwnerUsername(authService.getCurrentUsername());
 
+        // 1. Сохраняем в БД (получаем ID)
+        repository.insert(protocol);
+
+        // 2. Сохраняем в память
         storage.put(protocol.getId(), protocol);
+
+        System.out.println("[DB] Создан протокол #" + protocol.getId());
         return protocol;
     }
 
     // -------------------------------------------------------------------------
-    // Чтение (доступно всем)
+    // Чтение (только из памяти)
     // -------------------------------------------------------------------------
 
     public Optional<Protocol> findById(long id) {
@@ -69,18 +90,31 @@ public class ProtocolService {
     }
 
     // -------------------------------------------------------------------------
-    // Внутренний доступ
+    // Удаление
     // -------------------------------------------------------------------------
 
-    public Map<Long, Protocol> getStorage() { return storage; }
-
-    public void setNextId(long nextId) { this.nextId = nextId; }
-
-    public long getNextId() { return nextId; }
     public void delete(long id) {
         if (!storage.containsKey(id)) {
             throw new IllegalArgumentException("Протокол с id=" + id + " не найден");
         }
+
+        Protocol protocol = storage.get(id);
+        authService.requireOwnership(protocol.getOwnerUsername(), "Protocol#" + id);
+
+        // 1. Удаляем из БД
+        repository.delete(id);
+
+        // 2. Удаляем из памяти
         storage.remove(id);
+
+        System.out.println("[DB] Удалён протокол #" + id);
+    }
+
+    // -------------------------------------------------------------------------
+    // Для совместимости с UI
+    // -------------------------------------------------------------------------
+
+    public Map<Long, Protocol> getStorage() {
+        return storage;
     }
 }

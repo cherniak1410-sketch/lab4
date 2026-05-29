@@ -12,10 +12,10 @@ public class Protocol {
     private Instant createdAt;
     private Instant updatedAt;
 
-    // Конструктор
+    // Конструктор для создания нового протокола
     public Protocol(String name, Set<MeasurementParam> requiredParams) {
         this.name = name;
-        this.requiredParams = new HashSet<>(requiredParams); // копируем, чтобы не изменяли оригинал
+        this.requiredParams = new HashSet<>(requiredParams);
         this.ownerUsername = "SYSTEM";
         this.createdAt = Instant.now();
         this.updatedAt = Instant.now();
@@ -25,13 +25,13 @@ public class Protocol {
     public long getId() { return id; }
     public String getName() { return name; }
     public Set<MeasurementParam> getRequiredParams() {
-        return new HashSet<>(requiredParams); // возвращаем копию, чтобы не изменяли извне
+        return new HashSet<>(requiredParams);
     }
     public String getOwnerUsername() { return ownerUsername; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 
-    // Сеттеры
+    // Сеттеры для обычных полей
     public void setId(long id) { this.id = id; }
 
     public void setName(String name) {
@@ -49,13 +49,21 @@ public class Protocol {
         this.updatedAt = Instant.now();
     }
 
-    // Добавить один параметр в протокол
+    // Сеттеры для восстановления из БД
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    // Методы для работы с параметрами
     public void addRequiredParam(MeasurementParam param) {
         this.requiredParams.add(param);
         this.updatedAt = Instant.now();
     }
 
-    // Удалить параметр из протокола
     public void removeRequiredParam(MeasurementParam param) {
         this.requiredParams.remove(param);
         this.updatedAt = Instant.now();
