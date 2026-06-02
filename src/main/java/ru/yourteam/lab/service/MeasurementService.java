@@ -6,15 +6,16 @@ import ru.yourteam.lab.domain.MeasurementParam;
 import ru.yourteam.lab.repository.MeasurementRepository;
 import ru.yourteam.lab.validator.MeasurementValidator;
 
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import java.util.DoubleSummaryStatistics;
 
 /**
  * Сервис управления измерениями.
  *
- * Этап 6: данные хранятся синхронно в памяти (Map) и в PostgreSQL.
- * При старте загружаются из БД в память.
+ * Этап 7: добавлена расширенная фильтрация и статистика.
  */
 public class MeasurementService {
 
@@ -58,10 +59,7 @@ public class MeasurementService {
         Measurement measurement = new Measurement(sampleId, param, value, unit, method);
         measurement.setOwnerUsername(authService.getCurrentUsername());
 
-        // 1. Сохраняем в БД (получаем ID)
         repository.insert(measurement);
-
-        // 2. Сохраняем в память
         storage.put(measurement.getId(), measurement);
 
         System.out.println("[DB] Создано измерение #" + measurement.getId() + " для sample #" + sampleId);
@@ -94,6 +92,49 @@ public class MeasurementService {
                 .toList();
     }
 
+    // -------------------------------------------------------------------------
+    // Расширенная фильтрация (этап 7)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Универсальный фильтр измерений. Все параметры необязательны (null = не фильтровать).
+     *
+     * @param sampleId      фильтр по ID образца (0 = не фильтровать)
+     * @param param         фильтр по параметру
+     * @param owner         фильтр по владельцу
+     * @param minValue      нижняя граница значения (включительно)
+     * @param maxValue      верхняя граница значения (включительно)
+     * @param measuredFrom  нижняя граница даты измерения
+     * @param measuredTo    верхняя граница даты измерения
+     */
+    public List<Measurement> filter(long sampleId,
+                                    MeasurementParam param,
+                                    String owner,
+                                    Double minValue,
+                                    Double maxValue,
+                                    Instant measuredFrom,
+                                    Instant measuredTo) {
+        return storage.values().stream()
+                .filter(m -> !m.isDeleted())
+                .filter(m -> sampleId <= 0 || m.getSampleId() == sampleId)
+                .filter(m -> param == null || m.getParam() == param)
+                .filter(m -> owner == null || owner.isBlank()
+                        || m.getOwnerUsername().equalsIgnoreCase(owner))
+                .filter(m -> minValue == null || m.getValue() >= minValue)
+                .filter(m -> maxValue == null || m.getValue() <= maxValue)
+                .filter(m -> measuredFrom == null || !m.getMeasuredAt().isBefore(measuredFrom))
+                .filter(m -> measuredTo == null   || !m.getMeasuredAt().isAfter(measuredTo))
+                .sorted((a, b) -> b.getMeasuredAt().compareTo(a.getMeasuredAt()))
+                .collect(Collectors.toList());
+    }
+
+    // -------------------------------------------------------------------------
+    // Статистика по измерениям (этап 7)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Статистика (count/min/max/avg) для конкретного образца и параметра.
+     */
     public Map<String, Object> getStats(long sampleId, MeasurementParam param) {
         List<Measurement> measurements = getBySampleIdAndParam(sampleId, param);
         if (measurements.isEmpty()) {
@@ -103,23 +144,99 @@ public class MeasurementService {
                 .mapToDouble(Measurement::getValue)
                 .summaryStatistics();
 
-        Map<String, Object> result = new HashMap<>();
+        Map<String, Object> result = new LinkedHashMap<>();
         result.put("count", stats.getCount());
-        result.put("min", stats.getMin());
-        result.put("max", stats.getMax());
-        result.put("avg", stats.getAverage());
-
-        double sum = measurements.stream()
-                .mapToDouble(Measurement::getValue)
-                .sum();
-
-        result.put("sum", sum);
-
+        result.put("min",   stats.getMin());
+        result.put("max",   stats.getMax());
+        result.put("avg",   stats.getAverage());
         return result;
     }
 
+    /**
+     * Статистика по всем параметрам для одного образца.
+     * Возвращает Map: param -> {count, min, max, avg}
+     */
+    public Map<MeasurementParam, Map<String, Object>> getStatsBySample(long sampleId) {
+        Map<MeasurementParam, Map<String, Object>> result = new LinkedHashMap<>();
+        for (MeasurementParam p : MeasurementParam.values()) {
+            List<Measurement> list = getBySampleIdAndParam(sampleId, p);
+            if (!list.isEmpty()) {
+                DoubleSummaryStatistics stats = list.stream()
+                        .mapToDouble(Measurement::getValue)
+                        .summaryStatistics();
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("count", stats.getCount());
+                m.put("min",   stats.getMin());
+                m.put("max",   stats.getMax());
+                m.put("avg",   stats.getAverage());
+                result.put(p, m);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Глобальная статистика по каждому параметру (по всем образцам).
+     * Возвращает Map: param -> {count, min, max, avg}
+     */
+    public Map<MeasurementParam, Map<String, Object>> getGlobalStats() {
+        Map<MeasurementParam, Map<String, Object>> result = new LinkedHashMap<>();
+        for (MeasurementParam p : MeasurementParam.values()) {
+            DoubleSummaryStatistics stats = storage.values().stream()
+                    .filter(m -> !m.isDeleted() && m.getParam() == p)
+                    .mapToDouble(Measurement::getValue)
+                    .summaryStatistics();
+            if (stats.getCount() > 0) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("count", stats.getCount());
+                m.put("min",   stats.getMin());
+                m.put("max",   stats.getMax());
+                m.put("avg",   stats.getAverage());
+                result.put(p, m);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Количество измерений по владельцу.
+     */
+    public Map<String, Long> countByOwner() {
+        return storage.values().stream()
+                .filter(m -> !m.isDeleted())
+                .collect(Collectors.groupingBy(Measurement::getOwnerUsername, Collectors.counting()));
+    }
+
+    /**
+     * Покрытие параметров для образца: какие из 4 параметров есть хоть одно измерение.
+     */
+    public Set<MeasurementParam> getCoveredParams(long sampleId) {
+        return storage.values().stream()
+                .filter(m -> !m.isDeleted() && m.getSampleId() == sampleId)
+                .map(Measurement::getParam)
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * Общая сводка по измерениям.
+     */
+    public Map<String, Long> getSummary() {
+        long total   = storage.values().stream().filter(m -> !m.isDeleted()).count();
+        long deleted = storage.values().stream().filter(Measurement::isDeleted).count();
+
+        Map<String, Long> map = new LinkedHashMap<>();
+        map.put("Всего измерений", total);
+        map.put("Удалённых (soft)", deleted);
+        for (MeasurementParam p : MeasurementParam.values()) {
+            long cnt = storage.values().stream()
+                    .filter(m -> !m.isDeleted() && m.getParam() == p).count();
+            map.put("  " + p.name(), cnt);
+        }
+        return map;
+    }
+
     // -------------------------------------------------------------------------
-    // Удаление / Восстановление (мягкое удаление)
+    // Удаление / Восстановление
     // -------------------------------------------------------------------------
 
     public void delete(long id) {
@@ -130,10 +247,7 @@ public class MeasurementService {
 
         authService.requireOwnership(measurement.getOwnerUsername(), "Measurement#" + id);
 
-        // 1. Мягкое удаление в БД
         repository.updateDeleted(id, true);
-
-        // 2. Обновляем в памяти
         measurement.setDeleted(true);
         storage.put(id, measurement);
 
@@ -148,10 +262,7 @@ public class MeasurementService {
 
         authService.requireOwnership(measurement.getOwnerUsername(), "Measurement#" + id);
 
-        // 1. Восстанавливаем в БД
         repository.updateDeleted(id, false);
-
-        // 2. Обновляем в памяти
         measurement.setDeleted(false);
         storage.put(id, measurement);
 

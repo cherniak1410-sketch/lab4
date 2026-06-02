@@ -8,12 +8,12 @@ import ru.yourteam.lab.validator.ProtocolValidator;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Сервис управления протоколами.
  *
- * Этап 6: данные хранятся синхронно в памяти (Map) и в PostgreSQL.
- * При старте загружаются из БД в память.
+ * Этап 7: добавлена расширенная фильтрация и статистика.
  */
 public class ProtocolService {
 
@@ -52,10 +52,7 @@ public class ProtocolService {
         Protocol protocol = new Protocol(name, requiredParams);
         protocol.setOwnerUsername(authService.getCurrentUsername());
 
-        // 1. Сохраняем в БД (получаем ID)
         repository.insert(protocol);
-
-        // 2. Сохраняем в память
         storage.put(protocol.getId(), protocol);
 
         System.out.println("[DB] Создан протокол #" + protocol.getId());
@@ -90,6 +87,78 @@ public class ProtocolService {
     }
 
     // -------------------------------------------------------------------------
+    // Расширенная фильтрация (этап 7)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Универсальный фильтр протоколов. Все параметры необязательны (null = не фильтровать).
+     *
+     * @param owner         фильтр по владельцу (точное, без учёта регистра)
+     * @param nameContains  подстрока в названии
+     * @param hasParams     протокол должен содержать ВСЕ из указанных параметров
+     * @param hasAnyParam   протокол должен содержать ХОТЯ БЫ ОДИН из указанных параметров
+     */
+    public List<Protocol> filter(String owner,
+                                 String nameContains,
+                                 Set<MeasurementParam> hasParams,
+                                 Set<MeasurementParam> hasAnyParam) {
+        return storage.values().stream()
+                .filter(p -> owner == null || owner.isBlank()
+                        || p.getOwnerUsername().equalsIgnoreCase(owner))
+                .filter(p -> nameContains == null || nameContains.isBlank()
+                        || p.getName().toLowerCase().contains(nameContains.toLowerCase()))
+                .filter(p -> hasParams == null || hasParams.isEmpty()
+                        || p.getRequiredParams().containsAll(hasParams))
+                .filter(p -> hasAnyParam == null || hasAnyParam.isEmpty()
+                        || hasAnyParam.stream().anyMatch(param -> p.getRequiredParams().contains(param)))
+                .sorted(Comparator.comparing(Protocol::getId))
+                .collect(Collectors.toList());
+    }
+
+    // -------------------------------------------------------------------------
+    // Статистика по протоколам (этап 7)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Количество протоколов по владельцу.
+     */
+    public Map<String, Long> countByOwner() {
+        return storage.values().stream()
+                .collect(Collectors.groupingBy(Protocol::getOwnerUsername, Collectors.counting()));
+    }
+
+    /**
+     * Сколько протоколов требуют каждый из параметров.
+     */
+    public Map<MeasurementParam, Long> countByParam() {
+        Map<MeasurementParam, Long> result = new LinkedHashMap<>();
+        for (MeasurementParam p : MeasurementParam.values()) {
+            long cnt = storage.values().stream()
+                    .filter(proto -> proto.getRequiredParams().contains(p))
+                    .count();
+            result.put(p, cnt);
+        }
+        return result;
+    }
+
+    /**
+     * Общая сводка по протоколам.
+     */
+    public Map<String, Object> getSummary() {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("Всего протоколов", (long) storage.size());
+
+        // Среднее количество параметров в протоколе
+        OptionalDouble avg = storage.values().stream()
+                .mapToInt(p -> p.getRequiredParams().size())
+                .average();
+        map.put("Ср. параметров в протоколе", avg.isPresent()
+                ? String.format("%.1f", avg.getAsDouble()) : "—");
+
+        return map;
+    }
+
+    // -------------------------------------------------------------------------
     // Удаление
     // -------------------------------------------------------------------------
 
@@ -101,10 +170,7 @@ public class ProtocolService {
         Protocol protocol = storage.get(id);
         authService.requireOwnership(protocol.getOwnerUsername(), "Protocol#" + id);
 
-        // 1. Удаляем из БД
         repository.delete(id);
-
-        // 2. Удаляем из памяти
         storage.remove(id);
 
         System.out.println("[DB] Удалён протокол #" + id);

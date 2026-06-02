@@ -5,24 +5,24 @@ import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
+import javafx.scene.layout.*;
 import ru.yourteam.lab.auth.AuthService;
 import ru.yourteam.lab.domain.Measurement;
+import ru.yourteam.lab.domain.MeasurementParam;
 import ru.yourteam.lab.domain.Sample;
 import ru.yourteam.lab.service.MeasurementService;
 import ru.yourteam.lab.service.SampleService;
 
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
 /**
  * Вкладка "Измерения".
  *
- * Этап 5: кнопка "Добавить" активна только для авторизованных пользователей.
- * Добавлена колонка "Кто добавил".
+ * Этап 7: добавлена панель расширенной фильтрации.
  */
 public class MeasurementTab {
 
@@ -35,6 +35,19 @@ public class MeasurementTab {
 
     private final BorderPane root;
     private final TableView<Measurement> tableView;
+
+    // Поля фильтра
+    private ComboBox<String>          filterSampleCombo;
+    private ComboBox<String>          filterParamCombo;
+    private TextField                 filterOwnerField;
+    private TextField                 filterMinValueField;
+    private TextField                 filterMaxValueField;
+    private DatePicker                filterDateFrom;
+    private DatePicker                filterDateTo;
+
+    // Кэш: отображаемое имя -> id образца
+    private final java.util.Map<String, Long> sampleNameToId = new java.util.LinkedHashMap<>();
+
     public MeasurementTab(MeasurementService measurementService,
                           SampleService sampleService,
                           AuthService authService) {
@@ -44,12 +57,149 @@ public class MeasurementTab {
 
         tableView = buildTable();
         HBox toolbar = buildToolbar();
+        TitledPane filterPane = buildFilterPane();
+
+        VBox top = new VBox(4, filterPane, toolbar);
 
         root = new BorderPane();
-        root.setTop(toolbar);
+        root.setTop(top);
         root.setCenter(tableView);
-        BorderPane.setMargin(toolbar, new Insets(8));
+        BorderPane.setMargin(top, new Insets(4));
     }
+
+    // ──────────────────────────────────────────────
+    // Панель фильтров
+    // ──────────────────────────────────────────────
+
+    private TitledPane buildFilterPane() {
+        // Образец
+        filterSampleCombo = new ComboBox<>();
+        filterSampleCombo.setPrefWidth(160);
+        refreshSampleCombo();
+
+        // Параметр
+        filterParamCombo = new ComboBox<>();
+        filterParamCombo.getItems().add("(все)");
+        for (MeasurementParam p : MeasurementParam.values()) {
+            filterParamCombo.getItems().add(p.name());
+        }
+        filterParamCombo.getSelectionModel().selectFirst();
+        filterParamCombo.setPrefWidth(120);
+
+        // Владелец
+        filterOwnerField = new TextField();
+        filterOwnerField.setPromptText("Владелец...");
+        filterOwnerField.setPrefWidth(110);
+
+        // Диапазон значений
+        filterMinValueField = new TextField();
+        filterMinValueField.setPromptText("от");
+        filterMinValueField.setPrefWidth(70);
+
+        filterMaxValueField = new TextField();
+        filterMaxValueField.setPromptText("до");
+        filterMaxValueField.setPrefWidth(70);
+
+        // Дата
+        filterDateFrom = new DatePicker();
+        filterDateFrom.setPromptText("от");
+        filterDateFrom.setPrefWidth(130);
+
+        filterDateTo = new DatePicker();
+        filterDateTo.setPromptText("до");
+        filterDateTo.setPrefWidth(130);
+
+        Button btnApply = new Button("Применить");
+        Button btnReset = new Button("Сбросить");
+
+        btnApply.setOnAction(e -> applyFilter());
+        btnReset.setOnAction(e -> {
+            filterSampleCombo.getSelectionModel().selectFirst();
+            filterParamCombo.getSelectionModel().selectFirst();
+            filterOwnerField.clear();
+            filterMinValueField.clear();
+            filterMaxValueField.clear();
+            filterDateFrom.setValue(null);
+            filterDateTo.setValue(null);
+            refresh();
+        });
+
+        // Два ряда для удобства
+        HBox row1 = new HBox(8,
+                new Label("Образец:"), filterSampleCombo,
+                new Label("Параметр:"), filterParamCombo,
+                new Label("Владелец:"), filterOwnerField
+        );
+        HBox row2 = new HBox(8,
+                new Label("Значение от:"), filterMinValueField,
+                new Label("до:"), filterMaxValueField,
+                new Label("Дата с:"), filterDateFrom,
+                new Label("по:"), filterDateTo,
+                btnApply, btnReset
+        );
+        row1.setPadding(new Insets(4, 6, 2, 6));
+        row2.setPadding(new Insets(2, 6, 6, 6));
+
+        VBox content = new VBox(4, row1, row2);
+        content.setStyle("-fx-background-color: #f9f9f9;");
+
+        TitledPane pane = new TitledPane("Фильтры", content);
+        pane.setExpanded(false);
+        pane.setAnimated(true);
+        return pane;
+    }
+
+    private void refreshSampleCombo() {
+        sampleNameToId.clear();
+        filterSampleCombo.getItems().clear();
+        filterSampleCombo.getItems().add("(все образцы)");
+        for (Sample s : sampleService.getAll()) {
+            String label = "#" + s.getId() + " " + s.getName();
+            sampleNameToId.put(label, s.getId());
+            filterSampleCombo.getItems().add(label);
+        }
+        filterSampleCombo.getSelectionModel().selectFirst();
+    }
+
+    private void applyFilter() {
+        // Образец
+        String sampleLabel = filterSampleCombo.getValue();
+        long sampleId = 0;
+        if (sampleLabel != null && !sampleLabel.equals("(все образцы)")) {
+            sampleId = sampleNameToId.getOrDefault(sampleLabel, 0L);
+        }
+
+        // Параметр
+        String paramStr = filterParamCombo.getValue();
+        MeasurementParam param = (paramStr == null || paramStr.equals("(все)"))
+                ? null : MeasurementParam.valueOf(paramStr);
+
+        // Владелец
+        String owner = filterOwnerField.getText().trim();
+
+        // Диапазон значений
+        Double minVal = null, maxVal = null;
+        try { minVal = filterMinValueField.getText().isBlank() ? null
+                : Double.parseDouble(filterMinValueField.getText().trim()); }
+        catch (NumberFormatException ignored) {}
+        try { maxVal = filterMaxValueField.getText().isBlank() ? null
+                : Double.parseDouble(filterMaxValueField.getText().trim()); }
+        catch (NumberFormatException ignored) {}
+
+        // Дата
+        java.time.Instant from = filterDateFrom.getValue() != null
+                ? filterDateFrom.getValue().atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+        java.time.Instant to   = filterDateTo.getValue() != null
+                ? filterDateTo.getValue().plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant() : null;
+
+        List<Measurement> filtered = measurementService.filter(sampleId, param, owner, minVal, maxVal, from, to);
+        tableView.setItems(FXCollections.observableArrayList(filtered));
+        tableView.refresh();
+    }
+
+    // ──────────────────────────────────────────────
+    // Таблица
+    // ──────────────────────────────────────────────
 
     private TableView<Measurement> buildTable() {
         TableView<Measurement> table = new TableView<>();
@@ -79,7 +229,6 @@ public class MeasurementTab {
         TableColumn<Measurement, String> colTime = new TableColumn<>("Время");
         colTime.setCellValueFactory(c -> new SimpleStringProperty(FORMATTER.format(c.getValue().getMeasuredAt())));
 
-        // Колонка владельца (этап 5)
         TableColumn<Measurement, String> colOwner = new TableColumn<>("Кто добавил");
         colOwner.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().getOwnerUsername()));
         colOwner.setPrefWidth(100);
@@ -88,22 +237,23 @@ public class MeasurementTab {
         return table;
     }
 
+    // ──────────────────────────────────────────────
+    // Тулбар
+    // ──────────────────────────────────────────────
+
     private HBox buildToolbar() {
         Button btnAdd     = new Button("Добавить");
         Button btnRefresh = new Button("Обновить");
-        Button btnStats = new Button("Статистика");
-        Button btnDelete = new Button("Удалить");
+        Button btnDelete  = new Button("Удалить");
         Button btnRestore = new Button("Восстановить");
 
         btnAdd.setOnAction(e -> handleAdd());
         btnRefresh.setOnAction(e -> refresh());
-        btnStats.setOnAction(e -> showStats());
         btnDelete.setOnAction(e -> handleDelete());
         btnRestore.setOnAction(e -> {
             TextInputDialog dialog = new TextInputDialog();
             dialog.setTitle("Восстановление");
             dialog.setHeaderText("Введите ID измерения");
-
             dialog.showAndWait().ifPresent(value -> {
                 try {
                     long id = Long.parseLong(value);
@@ -115,17 +265,14 @@ public class MeasurementTab {
             });
         });
 
-        HBox toolbar = new HBox(
-                8,
-                btnAdd,
-                btnDelete,
-                btnRestore,
-                btnStats,
-                btnRefresh
-        );
+        HBox toolbar = new HBox(8, btnAdd, btnDelete, btnRestore, btnRefresh);
         toolbar.setPadding(new Insets(4));
         return toolbar;
     }
+
+    // ──────────────────────────────────────────────
+    // Обработчики
+    // ──────────────────────────────────────────────
 
     private void handleAdd() {
         if (!authService.isLoggedIn()) {
@@ -145,14 +292,12 @@ public class MeasurementTab {
                 Sample sample = sampleService.findById(data.sampleId())
                         .orElseThrow(() -> new IllegalArgumentException(
                                 "образец с id=" + data.sampleId() + " не найден"));
-
                 if (sample.getStatus().name().equals("ARCHIVED")) {
                     showError("Ошибка", "Нельзя добавлять измерения к ARCHIVED образцу.");
                     return;
                 }
-
-                measurementService.add(data.sampleId(), data.param(),
-                        data.value(), data.unit(), data.method());
+                measurementService.add(data.sampleId(), data.param(), data.value(), data.unit(), data.method());
+                refreshSampleCombo();
                 refresh();
             } catch (Exception ex) {
                 showError("Ошибка при добавлении", ex.getMessage());
@@ -184,7 +329,6 @@ public class MeasurementTab {
         });
     }
 
-
     public void refresh() {
         List<Sample> allSamples = sampleService.getAll();
         List<Measurement> allMeasurements = allSamples.stream()
@@ -200,40 +344,6 @@ public class MeasurementTab {
         alert.setHeaderText(null);
         alert.showAndWait();
     }
-    private void showStats() {
 
-        Measurement selected =
-                tableView.getSelectionModel().getSelectedItem();
-
-        if (selected == null) {
-            showError(
-                    "Ничего не выбрано",
-                    "Выберите измерение."
-            );
-            return;
-        }
-
-        var stats = measurementService.getStats(
-                selected.getSampleId(),
-                selected.getParam()
-        );
-
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-
-        alert.setTitle("Статистика");
-        alert.setHeaderText(
-                "Параметр " + selected.getParam()
-        );
-
-        alert.setContentText(
-                "Количество: " + stats.get("count") + "\n" +
-                        "Минимум: " + stats.get("min") + "\n" +
-                        "Максимум: " + stats.get("max") + "\n" +
-                        "Среднее: " + stats.get("avg") + "\n" +
-                        "Сумма: " + stats.get("sum")
-        );
-
-        alert.showAndWait();
-    }
     public Parent getRoot() { return root; }
 }

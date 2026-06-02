@@ -6,15 +6,15 @@ import ru.yourteam.lab.domain.SampleStatus;
 import ru.yourteam.lab.repository.SampleRepository;
 import ru.yourteam.lab.validator.SampleValidator;
 
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Сервис управления образцами.
  *
- * Этап 6: данные хранятся синхронно в памяти (Map) и в PostgreSQL.
- * При старте загружаются из БД в память.
- * Каждая операция add/update/delete меняет и БД, и память.
+ * Этап 7: добавлена расширенная фильтрация и агрегация.
  */
 public class SampleService {
 
@@ -54,10 +54,7 @@ public class SampleService {
         Sample sample = new Sample(name, type, location);
         sample.setOwnerUsername(authService.getCurrentUsername());
 
-        // 1. Сохраняем в БД (получаем ID)
         repository.insert(sample);
-
-        // 2. Сохраняем в память
         storage.put(sample.getId(), sample);
 
         System.out.println("[DB] Создан образец #" + sample.getId());
@@ -65,7 +62,7 @@ public class SampleService {
     }
 
     // -------------------------------------------------------------------------
-    // Чтение (только из памяти, в БД не ходим)
+    // Чтение (только из памяти)
     // -------------------------------------------------------------------------
 
     public Optional<Sample> findById(long id) {
@@ -105,21 +102,99 @@ public class SampleService {
                 .filter(s -> !s.isDeleted() && s.getOwnerUsername().equals(username))
                 .toList();
     }
-    public List<Sample> filterSamples(
-            String type,
-            String location,
-            String owner
-    ) {
+
+    // -------------------------------------------------------------------------
+    // Расширенная фильтрация (этап 7)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Универсальный фильтр образцов. Все параметры необязательны (null = не фильтровать).
+     *
+     * @param status     фильтр по статусу
+     * @param owner      фильтр по владельцу (точное совпадение)
+     * @param typeContains  подстрока в поле type (без учёта регистра)
+     * @param nameContains  подстрока в поле name (без учёта регистра)
+     * @param createdFrom   нижняя граница createdAt (включительно)
+     * @param createdTo     верхняя граница createdAt (включительно)
+     */
+    public List<Sample> filter(SampleStatus status,
+                               String owner,
+                               String typeContains,
+                               String nameContains,
+                               Instant createdFrom,
+                               Instant createdTo) {
         return storage.values().stream()
                 .filter(s -> !s.isDeleted())
-                .filter(s -> type == null || type.isBlank()
-                        || s.getType().equalsIgnoreCase(type))
-                .filter(s -> location == null || location.isBlank()
-                        || s.getLocation().equalsIgnoreCase(location))
+                .filter(s -> status == null || s.getStatus() == status)
                 .filter(s -> owner == null || owner.isBlank()
                         || s.getOwnerUsername().equalsIgnoreCase(owner))
-                .toList();
+                .filter(s -> typeContains == null || typeContains.isBlank()
+                        || s.getType().toLowerCase().contains(typeContains.toLowerCase()))
+                .filter(s -> nameContains == null || nameContains.isBlank()
+                        || s.getName().toLowerCase().contains(nameContains.toLowerCase()))
+                .filter(s -> createdFrom == null
+                        || s.getCreatedAt() == null
+                        || !s.getCreatedAt().isBefore(createdFrom))
+                .filter(s -> createdTo == null
+                        || s.getCreatedAt() == null
+                        || !s.getCreatedAt().isAfter(createdTo))
+                .sorted(Comparator.comparing(Sample::getId))
+                .collect(Collectors.toList());
     }
+
+    // -------------------------------------------------------------------------
+    // Статистика по образцам (этап 7)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Возвращает статистику по образцам сгруппированную по владельцу:
+     *   login -> количество активных образцов
+     */
+    public Map<String, Long> countByOwner() {
+        return storage.values().stream()
+                .filter(s -> !s.isDeleted())
+                .collect(Collectors.groupingBy(Sample::getOwnerUsername, Collectors.counting()));
+    }
+
+    /**
+     * Возвращает статистику по типам образцов:
+     *   type -> количество
+     */
+    public Map<String, Long> countByType() {
+        return storage.values().stream()
+                .filter(s -> !s.isDeleted())
+                .collect(Collectors.groupingBy(Sample::getType, Collectors.counting()));
+    }
+
+    /**
+     * Возвращает статистику по статусам образцов:
+     *   status -> количество
+     */
+    public Map<SampleStatus, Long> countByStatus() {
+        return storage.values().stream()
+                .filter(s -> !s.isDeleted())
+                .collect(Collectors.groupingBy(Sample::getStatus, Collectors.counting()));
+    }
+
+    /**
+     * Общая сводка: всего, активных, архивных, удалённых.
+     */
+    public Map<String, Long> getSummary() {
+        long total   = storage.values().stream().filter(s -> !s.isDeleted()).count();
+        long active  = storage.values().stream()
+                .filter(s -> !s.isDeleted() && s.getStatus() == SampleStatus.ACTIVE).count();
+        long archived = storage.values().stream()
+                .filter(s -> !s.isDeleted() && s.getStatus() == SampleStatus.ARCHIVED).count();
+        long deleted = storage.values().stream().filter(Sample::isDeleted).count();
+
+        Map<String, Long> map = new LinkedHashMap<>();
+        map.put("Всего образцов", total);
+        map.put("Активных", active);
+        map.put("Архивных", archived);
+        map.put("Удалённых (soft)", deleted);
+        return map;
+    }
+
     // -------------------------------------------------------------------------
     // Изменение
     // -------------------------------------------------------------------------
@@ -149,10 +224,7 @@ public class SampleService {
                 throw new IllegalArgumentException("нельзя менять поле '" + field + "'");
         }
 
-        // 1. Обновляем в БД
         repository.update(sample);
-
-        // 2. Обновляем в памяти
         storage.put(sample.getId(), sample);
 
         System.out.println("[DB] Обновлён образец #" + id);
@@ -168,10 +240,7 @@ public class SampleService {
         }
         sample.setStatus(SampleStatus.ARCHIVED);
 
-        // 1. Обновляем в БД
         repository.update(sample);
-
-        // 2. Обновляем в памяти
         storage.put(sample.getId(), sample);
 
         System.out.println("[DB] Архивирован образец #" + id);
@@ -179,18 +248,15 @@ public class SampleService {
     }
 
     // -------------------------------------------------------------------------
-    // Удаление / Восстановление (мягкое удаление)
+    // Удаление / Восстановление
     // -------------------------------------------------------------------------
 
     public void delete(long id) {
         Sample sample = getById(id);
         authService.requireOwnership(sample.getOwnerUsername(), "Sample#" + id);
 
-        // 1. Мягкое удаление в БД
         sample.setDeleted(true);
         repository.update(sample);
-
-        // 2. Обновляем в памяти
         storage.put(id, sample);
 
         System.out.println("[DB] Удалён (soft delete) образец #" + id);
@@ -203,11 +269,8 @@ public class SampleService {
         }
         authService.requireOwnership(sample.getOwnerUsername(), "Sample#" + id);
 
-        // 1. Восстанавливаем в БД
         sample.setDeleted(false);
         repository.update(sample);
-
-        // 2. Обновляем в памяти
         storage.put(id, sample);
 
         System.out.println("[DB] Восстановлен образец #" + id);
