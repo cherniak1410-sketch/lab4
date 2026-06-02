@@ -105,7 +105,21 @@ public class SampleService {
                 .filter(s -> !s.isDeleted() && s.getOwnerUsername().equals(username))
                 .toList();
     }
-
+    public List<Sample> filterSamples(
+            String type,
+            String location,
+            String owner
+    ) {
+        return storage.values().stream()
+                .filter(s -> !s.isDeleted())
+                .filter(s -> type == null || type.isBlank()
+                        || s.getType().equalsIgnoreCase(type))
+                .filter(s -> location == null || location.isBlank()
+                        || s.getLocation().equalsIgnoreCase(location))
+                .filter(s -> owner == null || owner.isBlank()
+                        || s.getOwnerUsername().equalsIgnoreCase(owner))
+                .toList();
+    }
     // -------------------------------------------------------------------------
     // Изменение
     // -------------------------------------------------------------------------

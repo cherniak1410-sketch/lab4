@@ -108,6 +108,13 @@ public class MeasurementService {
         result.put("min", stats.getMin());
         result.put("max", stats.getMax());
         result.put("avg", stats.getAverage());
+
+        double sum = measurements.stream()
+                .mapToDouble(Measurement::getValue)
+                .sum();
+
+        result.put("sum", sum);
+
         return result;
     }
 

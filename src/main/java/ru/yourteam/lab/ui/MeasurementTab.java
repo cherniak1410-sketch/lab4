@@ -91,11 +91,13 @@ public class MeasurementTab {
     private HBox buildToolbar() {
         Button btnAdd     = new Button("Добавить");
         Button btnRefresh = new Button("Обновить");
+        Button btnStats = new Button("Статистика");
         Button btnDelete = new Button("Удалить");
         Button btnRestore = new Button("Восстановить");
 
         btnAdd.setOnAction(e -> handleAdd());
         btnRefresh.setOnAction(e -> refresh());
+        btnStats.setOnAction(e -> showStats());
         btnDelete.setOnAction(e -> handleDelete());
         btnRestore.setOnAction(e -> {
             TextInputDialog dialog = new TextInputDialog();
@@ -118,6 +120,7 @@ public class MeasurementTab {
                 btnAdd,
                 btnDelete,
                 btnRestore,
+                btnStats,
                 btnRefresh
         );
         toolbar.setPadding(new Insets(4));
@@ -197,6 +200,40 @@ public class MeasurementTab {
         alert.setHeaderText(null);
         alert.showAndWait();
     }
+    private void showStats() {
 
+        Measurement selected =
+                tableView.getSelectionModel().getSelectedItem();
+
+        if (selected == null) {
+            showError(
+                    "Ничего не выбрано",
+                    "Выберите измерение."
+            );
+            return;
+        }
+
+        var stats = measurementService.getStats(
+                selected.getSampleId(),
+                selected.getParam()
+        );
+
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+
+        alert.setTitle("Статистика");
+        alert.setHeaderText(
+                "Параметр " + selected.getParam()
+        );
+
+        alert.setContentText(
+                "Количество: " + stats.get("count") + "\n" +
+                        "Минимум: " + stats.get("min") + "\n" +
+                        "Максимум: " + stats.get("max") + "\n" +
+                        "Среднее: " + stats.get("avg") + "\n" +
+                        "Сумма: " + stats.get("sum")
+        );
+
+        alert.showAndWait();
+    }
     public Parent getRoot() { return root; }
 }
